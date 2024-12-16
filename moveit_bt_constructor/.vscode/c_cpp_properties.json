@@ -1,0 +1,32 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_visualization/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_bt_constructor/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_core/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/rviz_marker_tools/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/ros_bt_py_interfaces/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_msgs/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/fairino_msgs/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/src/frcobot_ros2/fairino_hardware/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/src/moveit_bt_constructor/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/src/moveit_task_constructor/core/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/src/moveit_task_constructor/demo/include/**",
+        "/home/vboxuser/moveit_pro/colcon_ws/src/moveit_task_constructor/rviz_marker_tools/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

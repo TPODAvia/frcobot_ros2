@@ -1,0 +1,22 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_core/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/build/ros_bt_py",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/ros_bt_py/lib/python3.10/site-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/ros_bt_py_interfaces/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_msgs/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/fairino_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_core/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/build/ros_bt_py",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/ros_bt_py/lib/python3.10/site-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/ros_bt_py_interfaces/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/moveit_task_constructor_msgs/local/lib/python3.10/dist-packages",
+        "/home/vboxuser/moveit_pro/colcon_ws/install/fairino_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}

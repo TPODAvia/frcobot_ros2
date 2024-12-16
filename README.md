@@ -5,3 +5,8 @@ Tutorial of installing and uasage of ROS2 API, please refer to the Fair document
 
 Version histroy:
 2023.7.18 V1.0
+
+
+https://github.com/fzi-forschungszentrum-informatik/ros2_ros_bt_py.git
+
+https://github.com/moveit/moveit_task_constructor.git

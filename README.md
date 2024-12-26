@@ -10,3 +10,25 @@ Version histroy:
 https://github.com/fzi-forschungszentrum-informatik/ros2_ros_bt_py.git
 
 https://github.com/moveit/moveit_task_constructor.git
+
+
+git submodule add https://github.com/ros-drivers/velodyne colcon_ws/src/OrcaRL2/localization/velodyne
+
+
+$ git config --global user.name "John Doe" $ git config --global user.email hejhe@gmail.com
+
+git config --global user.name "FIRST_NAME LAST_NAME"
+git config --global user.email "MY_NAME@example.com"
+
+killall -9 gzserver
+killall -9 gzclient
+
+
+git submodule update --init --recursive
+git submodule update --init --recursive --force
+
+cd ~/orca_robot/colcon_ws
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+export MAKEFLAGS="-j2"
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release

@@ -2,8 +2,17 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
+
+    simulation_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(get_package_share_directory('robotic_arms_control'), 'launch', 'controller_spawner.launch.py')
+        )
+    )
+
     # Get the path to the package and the URDF file
     pkg_description = get_package_share_directory('fairino_description')
     urdf_file = os.path.join(pkg_description, "urdf", 'fairino10_v6.urdf')
@@ -36,6 +45,7 @@ def generate_launch_description():
 
     # Return the LaunchDescription
     return LaunchDescription([
+        # simulation_launch,
         joint_state_publisher_node,
         robot_state_publisher_node,
         rviz_node

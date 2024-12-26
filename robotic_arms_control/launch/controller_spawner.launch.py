@@ -6,12 +6,12 @@ from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
-    pkgPath = get_package_share_directory('robotic_arms_control')
-    gazeboLaunchFile = os.path.join(pkgPath, 'launch', 'gazebo_bringup.launch.py')
 
     return LaunchDescription([
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(gazeboLaunchFile)
+            PythonLaunchDescriptionSource(
+                os.path.join(get_package_share_directory('robotic_arms_control'), 'launch', 'gazebo_bringup.launch.py')
+            )
         ),
 
         Node(

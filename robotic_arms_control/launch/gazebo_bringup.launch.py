@@ -37,6 +37,7 @@ def generate_launch_description():
             executable='spawn_entity.py',
             name='robot_spawner',
             output='screen',
-            arguments=["-topic", "/robot_description", "-entity", "bazu"]),
+            arguments=["-topic", "/robot_description", "-entity", "fairino10_v6_robot"]
+            ),
 
     ])

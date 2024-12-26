@@ -5,10 +5,15 @@ import os
 from launch.actions import ExecuteProcess
 
 def generate_launch_description():
-    pkgPath = get_package_share_directory('fairino_description')
-    urdfFile = os.path.join(pkgPath, 'urdf', 'fairino10_v6.urdf')
 
-    mesh_pkg_share_dir = os.pathsep + os.path.join(get_package_prefix('fairino_description'), 'share')
+    if True:
+        pkgPath = get_package_share_directory('fairino_description')
+        urdfFile = os.path.join(pkgPath, 'urdf', 'fairino10_v6.urdf')
+        mesh_pkg_share_dir = os.pathsep + os.path.join(get_package_prefix('fairino_description'), 'share')
+    else:
+        pkgPath = get_package_share_directory('robotic_arms_control')
+        mesh_pkg_share_dir = os.pathsep + os.path.join(get_package_prefix('franka_description'), 'share')
+        urdfFile = os.path.join(pkgPath, 'urdf', 'panda_arm.urdf')
 
     if 'GAZEBO_MODEL_PATH' in os.environ:
         os.environ['GAZEBO_MODEL_PATH'] += mesh_pkg_share_dir

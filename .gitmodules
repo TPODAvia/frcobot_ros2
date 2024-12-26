@@ -1,0 +1,6 @@
+[submodule "moveit_task_constructor"]
+	path = moveit_task_constructor
+	url = https://github.com/moveit/moveit_task_constructor.git
+[submodule "warehouse_ros_mongo"]
+	path = warehouse_ros_mongo
+	url = https://github.com/moveit/warehouse_ros_mongo

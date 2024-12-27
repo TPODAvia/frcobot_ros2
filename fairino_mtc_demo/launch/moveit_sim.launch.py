@@ -11,7 +11,7 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 # ros2 launch moveit_task_constructor_demo demo.launch.py
 
 # hardware_type = gazebo, fake, real
-hardware_type = "gazebo"
+hardware_type = "fake"
 
 def generate_launch_description():
     moveit_config = (

@@ -103,7 +103,7 @@ mtc::Task MTCTaskNode::_createTask(){
   mtc::Task task;
   task.stages()->setName("fairino_mtc_task");
   task.loadRobotModel(_node);
-  const auto& arm_group_name = "fairino5_v6_group";
+  const auto& arm_group_name = "fairino10_v6_group";
   const auto& tip_frame = "wrist3_link";
   
   task.setProperty("group",arm_group_name);
@@ -264,7 +264,7 @@ mtc::Task MTCTaskNode::_createReverseTask(){
   mtc::Task task;
   task.stages()->setName("fairino_mtc_reverse_task");
   task.loadRobotModel(_node);
-  const auto& arm_group_name = "fairino5_v6_group";
+  const auto& arm_group_name = "fairino10_v6_group";
   const auto& tip_frame = "wrist3_link";
   
   task.setProperty("group",arm_group_name);

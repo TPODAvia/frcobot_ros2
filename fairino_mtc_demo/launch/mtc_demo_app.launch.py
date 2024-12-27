@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
 
-packagename = "fairino5_v6_moveit2_config"
+packagename = "fairino10_v6_moveit2_config"
 
 
 def generate_launch_description():

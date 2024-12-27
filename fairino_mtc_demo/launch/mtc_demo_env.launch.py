@@ -6,9 +6,9 @@ from ament_index_python.packages import get_package_share_directory
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
-robotname = "fairino5_v6_robot"
-packagename = "fairino5_v6_moveit2_config"
-ros2controllername = "fairino5_controller"
+robotname = "fairino10_v6_robot"
+packagename = "fairino10_v6_moveit2_config"
+ros2controllername = "joint_trajectory_controller"
 
 def generate_launch_description():
     # planning_context

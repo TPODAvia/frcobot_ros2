@@ -113,7 +113,7 @@ def generate_launch_description():
             robot_state_publisher,
             run_move_group_node,
             ros2_control_node,
-            gazebo_bringup,
+            # gazebo_bringup,
         ]
         + load_controllers
     )

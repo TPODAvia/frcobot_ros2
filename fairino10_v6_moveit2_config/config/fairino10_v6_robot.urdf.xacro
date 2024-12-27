@@ -1,14 +1,24 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="fairino10_v6_robot">
+
+  <link name="world"/>
+  <joint name="world_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
+
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
 
-    <!-- Import fairino10_v6_robot urdf file -->
+    <!-- Import panda urdf file -->
     <xacro:include filename="$(find fairino_description)/urdf/fairino10_v6.urdf" />
 
-    <!-- Import control_xacro -->
-    <xacro:include filename="fairino10_v6_robot.ros2_control.xacro" />
-
-
+    <!-- Import panda ros2_control description -->
+    <xacro:include filename="fairino10_v6_robot_fake.ros2_control.xacro" />
+    <!-- <xacro:include filename="fairino10_v6_robot_real.ros2_control.xacro" /> -->
+    <!-- <xacro:include filename="fairino10_v6_robot_gazebo.ros2_control.xacro" /> -->
     <xacro:fairino10_v6_robot_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
 
+    <!-- <xacro:include filename="panda_hand.ros2_control.xacro" /> -->
+    <!-- <xacro:panda_hand_ros2_control name="HandSystem"/> -->
 </robot>

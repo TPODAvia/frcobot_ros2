@@ -2,18 +2,22 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess
+from launch.actions import ExecuteProcess, IncludeLaunchDescription
 from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
-# ros2 launch moveit_task_constructor_demo demo.launch.py
-from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
+# ros2 launch moveit_task_constructor_demo demo.launch.py
+
+# hardware_type = gazebo, fake, real
+hardware_type = "gazebo"
 
 def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder(robot_name="fairino10_v6", package_name = "fairino10_v6_moveit2_config")
         .planning_pipelines(pipelines=["ompl"])
-        .robot_description(file_path="config/fairino10_v6_robot.urdf.xacro")
+        .robot_description(file_path="config/fairino10_v6_robot.urdf.xacro", mappings={"hardware_type": hardware_type})
         .to_moveit_configs()
     )
 
@@ -48,15 +52,6 @@ def generate_launch_description():
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
         ],
-    )
-
-    # Static TF
-    static_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_transform_publisher",
-        output="log",
-        arguments=["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", "world", "base_link"],
     )
 
     # Publish TF
@@ -95,7 +90,7 @@ def generate_launch_description():
             )
         ]
 
-    # Use only the Gazebo bringup (which hopefully starts gazebo + spawns robot)
+    # Use only the Gazebo bringup (which hopefully starts gazebo + spawns robot)\
     gazebo_bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -103,17 +98,18 @@ def generate_launch_description():
                 'launch', 
                 'gazebo_bringup.launch.py'
             )
-        )
+        ),
+        condition=IfCondition(PythonExpression(["'", hardware_type, "' == 'gazebo'"]))
     )
+
 
     return LaunchDescription(
         [
             rviz_node,
-            # static_tf,
             robot_state_publisher,
             run_move_group_node,
             ros2_control_node,
-            # gazebo_bringup,
+            gazebo_bringup,
         ]
         + load_controllers
     )

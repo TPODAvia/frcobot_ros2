@@ -4,19 +4,19 @@
   <name>robotic_arms_control</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="noshluk2@gmail.com">luqman</maintainer>
+  <maintainer email="thepowerofdarknes2000@gmail.com">vboxuser</maintainer>
   <license>TODO: License declaration</license>
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
-  <depend>gazebo_ros</depend>
-  <exec_depend>gazebo</exec_depend>
-  <exec_depend>gazebo_plugins</exec_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
   <export>
-    <build_type>ament_python</build_type>
-    <gazebo_ros plugin_path="${prefix}/lib" gazebo_media_path="${prefix}" gazebo_model_path="${prefix}/meshes"/>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

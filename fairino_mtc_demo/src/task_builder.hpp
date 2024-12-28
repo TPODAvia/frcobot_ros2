@@ -12,6 +12,7 @@
 #include <moveit/task_constructor/stages/modify_planning_scene.h>
 #include <moveit/task_constructor/solvers/cartesian_path.h>
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
 
 namespace mtc = moveit::task_constructor;
 
@@ -41,9 +42,6 @@ public:
   // Remove an object by name
   void removeObject(const std::string& object_name);
 
-  // Move the manipulator to a specified joint position
-  void jointsPosition(const std::vector<double>& joint_values);
-
   // Spawn an object in the scene with the given pose
   void spawnObject(const std::string& object_name, double x, double y, double z,
                    double rx, double ry, double rz, double rw);
@@ -51,10 +49,22 @@ public:
   // Switch pipeline / planner
   void choosePipeline(const std::string& pipeline_name, const std::string& planner_id);
 
+  // Move the manipulator to a specified joint position
+  void jointsPosition(const std::vector<double>& joint_values);
+
   // Move end effector to coordinate
   void endCoordinate(const std::string& frame_id, 
                      double x=0, double y=0, double z=0,
                      double rx=0, double ry=0, double rz=0, double rw=1.0);
+
+  // Move manipulator with a vector (e.g., relative move)
+  void vectorMove(const std::vector<double>& move_vector);
+  
+  // Move manipulator along a trajectory
+  void trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory);
+  
+  // Move manipulator with feedback (e.g., using feedback control)
+  void feedbackMove();
 
   // Attach object
   void attachObject(const std::string& object_name, const std::string& link_name);

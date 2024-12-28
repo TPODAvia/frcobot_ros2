@@ -3,13 +3,16 @@
 #include <moveit/task_constructor/stages/move_to.h>
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
 
-TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node)
+TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
+                         const std::string& arm_group_name,
+                         const std::string& tip_frame)
   : node_{node}
+  , arm_group_name_{arm_group_name}
+  , tip_frame_{tip_frame}
 {
   // Initialize planners once
-  sampling_planner_      = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
-//   interpolation_planner_ = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-  cartesian_planner_     = std::make_shared<mtc::solvers::CartesianPath>();
+  sampling_planner_  = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
+  cartesian_planner_ = std::make_shared<mtc::solvers::CartesianPath>();
 }
 
 void TaskBuilder::newTask(const std::string& task_name)
@@ -19,6 +22,8 @@ void TaskBuilder::newTask(const std::string& task_name)
   // Create a brand new MTC Task
   task_.stages()->setName(task_name);
   task_.loadRobotModel(node_);
+
+  // Set MTC properties from our member variables
   task_.setProperty("group", arm_group_name_);
   task_.setProperty("ik_frame", tip_frame_);
 
@@ -30,26 +35,43 @@ void TaskBuilder::newTask(const std::string& task_name)
 void TaskBuilder::clearScene()
 {
   // For demonstration, "clearScene" might remove all collision objects.
-  // You could also do direct calls to PlanningSceneInterface, etc.
-  // We'll just log here for now.
   RCLCPP_INFO(node_->get_logger(), "[clear_scene] Called");
   // ... your logic to clear the scene ...
 }
 
 void TaskBuilder::removeObject(const std::string& object_name)
 {
-  // Typically you might remove the object from the planning scene.
   RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
   // ... your logic to remove object from scene ...
 }
 
 void TaskBuilder::jointsPosition(const std::vector<double>& joint_values)
 {
-  // Example: Add a "MoveTo" stage with specific joint values
+  // Example for a 6-joint robot; adapt to your robot’s actual joint names/count:
+  static const std::vector<std::string> JOINT_NAMES = {
+    "j1", "j2", "j3", "j4", "j5", "j6"
+  };
+
+  // Build a map<joint_name, value>
+  if (joint_values.size() != JOINT_NAMES.size()) {
+    RCLCPP_ERROR(node_->get_logger(), 
+      "jointsPosition() called with %zu values, but robot expects %zu joints",
+      joint_values.size(), JOINT_NAMES.size());
+    return;
+  }
+
+  std::map<std::string, double> joints_map;
+  for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
+    joints_map[JOINT_NAMES[i]] = joint_values[i];
+  }
+
+  // Create a MoveTo stage
   auto stage = std::make_unique<mtc::stages::MoveTo>("move to joints", sampling_planner_);
   stage->setGroup(arm_group_name_);
-  stage->setGoal(joint_values);
+  stage->setGoal(joints_map);  // <-- setGoal with a map
   stage->setTimeout(10.0);
+
+  // Add to the task
   task_.add(std::move(stage));
 }
 
@@ -61,8 +83,8 @@ void TaskBuilder::spawnObject(const std::string& object_name,
     "[spawn_object] name=%s, pos=(%.2f,%.2f,%.2f), orient=(%.2f,%.2f,%.2f,%.2f)",
     object_name.c_str(), x, y, z, rx, ry, rz, rw);
 
-  // Typically you'd call PlanningSceneInterface::applyCollisionObject() or similar.
-  // This is just a placeholder.
+  // Typically you'd call PlanningSceneInterface::applyCollisionObject() 
+  // or something similar here.
 }
 
 void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::string& planner_id)
@@ -84,15 +106,10 @@ void TaskBuilder::endCoordinate(const std::string& frame_id,
     "[end_coordinate] frame_id=%s, xyz=(%.2f,%.2f,%.2f), quat=(%.2f,%.2f,%.2f,%.2f)",
     frame_id.c_str(), x, y, z, rx, ry, rz, rw);
 
-  // For a simple example, create a MoveRelative or MoveTo stage to move to that pose
-  // using your cartesian_planner_ or sampling_planner_.
-  // The exact approach depends on your usage. 
-  // E.g., we can do a MoveRelative in the 'frame_id' coordinate frame:
-  //
+  // Example: create a MoveRelative or MoveTo stage (depending on your usage).
+  // For instance, a MoveRelative in the 'frame_id' coordinate frame:
   // auto stage = createMoveRelativeStage("end_coordinate", x, y, z);
   // task_.add(std::move(stage));
-
-  // If you actually want an absolute pose, you'd do MoveTo with a geometry_msgs::PoseStamped.
 }
 
 void TaskBuilder::attachObject(const std::string& object_name, const std::string& link_name)
@@ -118,19 +135,13 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
 void TaskBuilder::gripperClose()
 {
   RCLCPP_INFO(node_->get_logger(), "[gripper_close] Called");
-  // Here you might add a stage that closes the gripper joints,
-  // or if your gripper is a separate group, a MoveTo that sets
-  // those joint values. E.g.:
-  // auto stage = std::make_unique<mtc::stages::MoveTo>("close gripper", sampling_planner_);
-  // stage->setGroup("gripper_group");
-  // stage->setGoal("close");  // or a set of joint values
-  // task_.add(std::move(stage));
+  // For example: if you have a "gripper" group, do a MoveTo to the "closed" pose.
 }
 
 void TaskBuilder::gripperOpen()
 {
   RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
-  // Similar to gripperClose(), but for open joints
+  // Similarly for open
 }
 
 void TaskBuilder::deleteJsonSimContent(const std::string& filename)

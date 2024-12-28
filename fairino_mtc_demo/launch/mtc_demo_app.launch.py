@@ -14,9 +14,9 @@ def generate_launch_description():
         executable="mtc_node",
         output="screen",
         #prefix=['gdb -ex run --args'],
-        parameters=[
-            moveit_config,
-        ],
+        # parameters=[
+        #     moveit_config,
+        # ],
     )
 
     return LaunchDescription([pick_place_demo])

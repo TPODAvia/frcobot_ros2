@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/task_constructor/task.h>
 #include <moveit_msgs/msg/collision_object.hpp>
@@ -10,7 +11,6 @@
 #include <moveit/task_constructor/stages/move_relative.h>
 #include <moveit/task_constructor/stages/modify_planning_scene.h>
 #include <moveit/task_constructor/solvers/cartesian_path.h>
-// #include <moveit/task_constructor/solvers/joint_interpolation_planner.h>
 #include <moveit/task_constructor/solvers/pipeline_planner.h>
 
 namespace mtc = moveit::task_constructor;
@@ -22,8 +22,14 @@ namespace mtc = moveit::task_constructor;
 class TaskBuilder
 {
 public:
-  explicit TaskBuilder(rclcpp::Node::SharedPtr node);
-  
+  /**
+   * Constructor that sets the node and also allows you to specify which group
+   * and tip frame you’ll use in the MTC pipeline.
+   */
+  TaskBuilder(rclcpp::Node::SharedPtr node,
+              const std::string& arm_group_name,
+              const std::string& tip_frame);
+
   // Clears the internal reference to the current MTC task and starts a new one.
   void newTask(const std::string& task_name);
 
@@ -46,7 +52,8 @@ public:
   void choosePipeline(const std::string& pipeline_name, const std::string& planner_id);
 
   // Move end effector to coordinate
-  void endCoordinate(const std::string& frame_id, double x=0, double y=0, double z=0, 
+  void endCoordinate(const std::string& frame_id, 
+                     double x=0, double y=0, double z=0,
                      double rx=0, double ry=0, double rz=0, double rw=1.0);
 
   // Attach object
@@ -77,17 +84,19 @@ public:
 
 private:
   // Helper: create a MoveRelative stage
-  std::unique_ptr<mtc::stages::MoveRelative> createMoveRelativeStage(
-      const std::string& name, double x, double y, double z);
+  std::unique_ptr<mtc::stages::MoveRelative>
+  createMoveRelativeStage(const std::string& name, double x, double y, double z);
 
   // ------------- Private Members ---------------
   rclcpp::Node::SharedPtr node_;
   mtc::Task task_;
+
+  // Planners
   std::shared_ptr<mtc::solvers::PipelinePlanner> sampling_planner_;
-//   std::shared_ptr<mtc::solvers::JointInterpolationPlanner> interpolation_planner_;
   std::shared_ptr<mtc::solvers::CartesianPath> cartesian_planner_;
 
-  const std::string arm_group_name_ = "fairino10_v6_group";
-  const std::string tip_frame_      = "wrist3_link";
+  // Robot group and tip frame
+  std::string arm_group_name_;
+  std::string tip_frame_;
 };
 

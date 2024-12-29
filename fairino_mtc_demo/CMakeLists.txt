@@ -18,6 +18,7 @@ find_package(moveit_core REQUIRED)
 find_package(moveit_ros_planning REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_msgs REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 # Add message packages
 find_package(geometry_msgs REQUIRED)
@@ -53,11 +54,13 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   trajectory_msgs
   Eigen3
   tf2_geometry_msgs
+  yaml-cpp
 )
 
 # Link Eigen3 libraries
 target_link_libraries(${PROJECT_NAME}_lib
   Eigen3::Eigen
+  yaml-cpp
 )
 
 ##############################################################################
@@ -100,6 +103,7 @@ ament_target_dependencies(task_generator
   trajectory_msgs
   Eigen3
   tf2_geometry_msgs
+  yaml-cpp
 )
 target_link_libraries(task_generator
   ${PROJECT_NAME}_lib

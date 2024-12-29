@@ -17,9 +17,8 @@
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
 #include <eigen3/Eigen/Dense>
 #include <eigen3/unsupported/Eigen/Splines>
-// #include <moveit/task_constructor/stages/execute_trajectory.h>
-// #include <moveit/trajectory_processing/spline_smoothing.h>
-// #include <moveit/task_constructor/stages/generate_trajectory.h>
+#include <yaml-cpp/yaml.h>
+
 namespace mtc = moveit::task_constructor;
 
 /** 
@@ -104,6 +103,12 @@ private:
   rclcpp::Node::SharedPtr node_;
   mtc::Task task_;
 
+  // Solvers map: solver name -> solver instance
+  std::map<std::string, mtc::solvers::PlannerInterfacePtr> solvers_;
+
+  // Pointer to the currently active solver
+  mtc::solvers::PlannerInterfacePtr current_solver_;
+  
   // Planners
   std::shared_ptr<mtc::solvers::PipelinePlanner> sampling_planner_;
   std::shared_ptr<mtc::solvers::CartesianPath> cartesian_planner_;
@@ -126,76 +131,21 @@ private:
                                 const std::vector<std::vector<double>>& joint_waypoints,
                                 moveit_msgs::msg::RobotTrajectory& trajectory_out,
                                 double total_time = 5.0,
-                                double time_step = 0.05)
-  {
-      if (joint_waypoints.empty()) {
-          RCLCPP_ERROR(rclcpp::get_logger("TaskBuilder"), "No joint waypoints provided for spline generation.");
-          return false;
-      }
-
-      size_t num_joints = joint_waypoints[0].size();
-      size_t num_waypoints = joint_waypoints.size();
-
-      // Convert joint_waypoints to Eigen matrix
-      Eigen::MatrixXd waypoints_matrix(num_waypoints, num_joints);
-      for (size_t i = 0; i < num_waypoints; ++i) {
-          if (joint_waypoints[i].size() != num_joints) {
-              RCLCPP_ERROR(rclcpp::get_logger("TaskBuilder"), "Inconsistent number of joints in waypoints.");
-              return false;
-          }
-          for (size_t j = 0; j < num_joints; ++j) {
-              waypoints_matrix(i, j) = joint_waypoints[i][j];
-          }
-      }
-
-      // // Perform spline interpolation for each joint
-      // std::vector<std::vector<double>> interpolated_waypoints;
-      // size_t interpolated_points = static_cast<size_t>(total_time / time_step) + 1;
-
-      // for (size_t j = 0; j < num_joints; ++j) {
-      //     Eigen::RowVectorXd joint_waypoints_eigen = waypoints_matrix.col(j).transpose();
-
-      //     // Create a spline with the number of waypoints
-      //     Eigen::Spline<double, 1> spline = Eigen::SplineFitting<Eigen::Spline<double, 1>>::Interpolate(
-      //         joint_waypoints_eigen, num_waypoints - 1, Eigen::MatrixXd::Zero(1,1));
-
-      //     // Generate interpolated points
-      //     for (size_t i = 0; i < interpolated_points; ++i) {
-      //         double t = static_cast<double>(i) / static_cast<double>(interpolated_points - 1);
-      //         double joint_pos = spline(t)(0);
-      //         if (j == 0) {
-      //             interpolated_waypoints.emplace_back();
-      //             interpolated_waypoints.back().resize(num_joints, 0.0);
-      //         }
-      //         interpolated_waypoints[i][j] = joint_pos;
-      //     }
-      // }
-
-      // // Assign positions and compute velocities
-      // trajectory_out.joint_trajectory.joint_names = robot_model->getJointModelGroup("arm")->getJointModelNames();
-
-      // for (size_t i = 0; i < interpolated_waypoints.size(); ++i) {
-      //     trajectory_msgs::msg::JointTrajectoryPoint point;
-      //     point.positions = interpolated_waypoints[i];
-
-      //     if (i == 0 || i == interpolated_waypoints.size() - 1) {
-      //         point.velocities.assign(num_joints, 0.0);
-      //     } else {
-      //         // Simple finite difference for velocity estimation
-      //         for (size_t j = 0; j < num_joints; ++j) {
-      //             double velocity = (interpolated_waypoints[i + 1][j] - interpolated_waypoints[i - 1][j]) / (2 * time_step);
-      //             point.velocities.push_back(velocity);
-      //         }
-      //     }
-
-      //     // Assign time_from_start
-      //     point.time_from_start = rclcpp::Duration::from_seconds(i * time_step).to_chrono<std::chrono::nanoseconds>();
-
-      //     trajectory_out.joint_trajectory.points.push_back(point);
-      // }
-
-      return true;
-  }
-
+                                double time_step = 0.05);
+  
+  /**
+   * @brief Saves the current solver configuration to a YAML file.
+   * 
+   * @param file_path The path to the YAML configuration file.
+   */
+  void saveSolverConfig(const std::string& file_path);
+  
+  /**
+   * @brief Loads the solver configuration from a YAML file and sets the current_solver_.
+   * 
+   * @param file_path The path to the YAML configuration file.
+   * @return true if successful, false otherwise.
+   */
+  bool loadSolverConfig(const std::string& file_path);
 };
 

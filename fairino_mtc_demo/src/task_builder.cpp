@@ -1,8 +1,13 @@
 #include "task_builder.hpp"
-#include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/move_to.h>
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <fstream> // For file I/O
+#include <filesystem> // For directory handling (C++17)
+#include <chrono>
+#include <thread>
+
+namespace fs = std::filesystem;
 
 TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
                          const std::string& arm_group_name,
@@ -11,8 +16,27 @@ TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
   , arm_group_name_{arm_group_name}
   , tip_frame_{tip_frame}
 {
+  // Initialize solvers
   sampling_planner_  = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
   cartesian_planner_ = std::make_shared<mtc::solvers::CartesianPath>();
+
+  // Set default solver
+  current_solver_ = sampling_planner_;
+  
+  // Initialize default solvers map if needed
+  // For example, add sampling_planner_ to solvers_ map
+  solvers_["sampling_planner"] = sampling_planner_;
+  
+  // Optionally, load solver configuration from memory
+  std::string memory_dir = "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/memory/";
+  std::string config_file = memory_dir + "current_solver_config.yaml";
+  
+  if (loadSolverConfig(config_file)) {
+    RCLCPP_INFO(node_->get_logger(), "Loaded solver configuration from %s", config_file.c_str());
+  }
+  else {
+    RCLCPP_WARN(node_->get_logger(), "Failed to load solver configuration. Using default solver.");
+  }
 }
 
 void TaskBuilder::newTask(const std::string& task_name)
@@ -32,17 +56,109 @@ void TaskBuilder::newTask(const std::string& task_name)
   task_.add(std::move(current_state_stage));
 }
 
+void TaskBuilder::saveSolverConfig(const std::string& file_path)
+{
+  YAML::Node config;
+  
+  // Find the current solver's key in the solvers_ map
+  std::string current_solver_name = "unknown";
+  std::string planner_id = "unknown";
+  
+  for (const auto& [name, solver_ptr] : solvers_) {
+    if (solver_ptr == current_solver_) {
+      current_solver_name = name;
+      // Assuming PlannerInterface has a method getPlannerId(), which might not be the case.
+      // If not, you'll need to store planner_id separately.
+      // For this example, we'll assume we have stored planner_id when initializing the solver.
+      // This requires additional member variables or a different approach.
+      // Here, we'll skip setting planner_id in the config.
+      break;
+    }
+  }
+
+  config["pipeline_name"] = current_solver_name;
+  // config["planner_id"] = planner_id; // Uncomment if planner_id is retrievable
+
+  try {
+    std::ofstream fout(file_path);
+    fout << config;
+    fout.close();
+    RCLCPP_INFO(node_->get_logger(), "Saved solver configuration to %s", file_path.c_str());
+  }
+  catch (const std::exception& e) {
+    RCLCPP_ERROR(node_->get_logger(), "Failed to save solver configuration: %s", e.what());
+  }
+}
+
+bool TaskBuilder::loadSolverConfig(const std::string& file_path)
+{
+  if (!fs::exists(file_path)) {
+    RCLCPP_WARN(node_->get_logger(), "Solver configuration file %s does not exist.", file_path.c_str());
+    return false;
+  }
+
+  try {
+    YAML::Node config = YAML::LoadFile(file_path);
+    std::string pipeline_name = config["pipeline_name"].as<std::string>();
+    // std::string planner_id = config["planner_id"].as<std::string>(); // Uncomment if planner_id is saved
+
+    RCLCPP_INFO(node_->get_logger(), "Loaded solver configuration: pipeline=%s", pipeline_name.c_str());
+
+    // Re-initialize solvers based on loaded pipeline_name
+    // Note: This assumes that `choosePipeline` logic can be reused here
+    // Alternatively, factor out the solver initialization logic into a separate method
+    choosePipeline(pipeline_name, ""); // Pass planner_id if available
+
+    return true;
+  }
+  catch (const std::exception& e) {
+    RCLCPP_ERROR(node_->get_logger(), "Failed to load solver configuration: %s", e.what());
+    return false;
+  }
+}
+
 void TaskBuilder::clearScene()
 {
-  // For demonstration, "clearScene" might remove all collision objects.
   RCLCPP_INFO(node_->get_logger(), "[clear_scene] Called");
-  // ... your logic to clear the scene ...
+
+  // Initialize the PlanningSceneInterface
+  moveit::planning_interface::PlanningSceneInterface psi;
+
+  // Retrieve all known collision object names in the planning scene
+  std::vector<std::string> object_ids = psi.getKnownObjectNames();
+
+  // Check if there are any objects to remove
+  if (object_ids.empty()) {
+    RCLCPP_INFO(node_->get_logger(), "No collision objects found in the scene to remove.");
+    return;
+  }
+
+  RCLCPP_INFO(node_->get_logger(), "Removing %zu collision object(s) from the scene.", object_ids.size());
+
+  // Remove all retrieved collision objects
+  psi.removeCollisionObjects(object_ids);
+
+  // Optional: Wait briefly to ensure objects are removed before proceeding
+  // This can be adjusted based on your system's performance
+  rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+  // Verify removal by checking the known object names again
+  std::vector<std::string> remaining_objects = psi.getKnownObjectNames();
+  if (remaining_objects.empty()) {
+    RCLCPP_INFO(node_->get_logger(), "All collision objects have been successfully removed from the scene.");
+  } else {
+    RCLCPP_WARN(node_->get_logger(), "Some collision objects could not be removed:");
+    for (const auto& obj : remaining_objects) {
+      RCLCPP_WARN(node_->get_logger(), " - %s", obj.c_str());
+    }
+  }
 }
 
 void TaskBuilder::removeObject(const std::string& object_name)
 {
   RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
-  // ... your logic to remove object from scene ...
+  moveit::planning_interface::PlanningSceneInterface psi;
+  psi.removeCollisionObjects({object_name});
 }
 
 void TaskBuilder::spawnObject(const std::string& object_name, 
@@ -50,26 +166,32 @@ void TaskBuilder::spawnObject(const std::string& object_name,
                               double rx, double ry, double rz, double rw)
 {
   RCLCPP_INFO(node_->get_logger(),
-    "[spawn_object] name=%s, pos=(%.2f,%.2f,%.2f), orient=(%.2f,%.2f,%.2f,%.2f)",
+    "[spawn_object] name=%s, pos=(%.2f, %.2f, %.2f), orient=(%.2f, %.2f, %.2f, %.2f)",
             object_name.c_str(),    x, y, z,                  rx, ry, rz, rw);
 
   moveit_msgs::msg::CollisionObject object;
-  object.id = "object";
-  object.header.frame_id = "world";
+  object.id = object_name; // Use the provided object_name
+  object.header.frame_id = "world"; // Adjust as needed
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = {0.1,0.02};
+  object.primitives[0].dimensions = {0.1, 0.02}; // Example dimensions
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.1;
-  pose.position.y = -0.55;
-  pose.position.z = 0.1;
-  pose.orientation.w = 1.0;
+  pose.position.x = x;
+  pose.position.y = y;
+  pose.position.z = z;
+  pose.orientation.x = rx;
+  pose.orientation.y = ry;
+  pose.orientation.z = rz;
+  pose.orientation.w = rw;
   object.pose = pose;
 
   moveit::planning_interface::PlanningSceneInterface psi;
   psi.applyCollisionObject(object);
+
+  RCLCPP_INFO(node_->get_logger(), "Spawned object '%s' in the scene.", object_name.c_str());
 }
+
 
 void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::string& planner_id)
 {
@@ -77,41 +199,77 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::st
     "[choose_pipeline] pipeline=%s, planner_id=%s",
     pipeline_name.c_str(), planner_id.c_str());
 
-  // sampling_planner_->setPlannerId(planner_id);
-  // sampling_planner_->setPlannerInterfaceName(pipeline_name);
+  // Clear existing solvers
+  solvers_.clear();
 
-  // // PTP Planner
-  // auto pilz_ptp_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
-  // pilz_ptp_planner->setPlannerId("pilz_industrial_motion_planner", "PTP");
-  // pilz_ptp_planner->setProperty("max_velocity_scaling_factor", 0.5);
-  // pilz_ptp_planner->setProperty("max_acceleration_scaling_factor", 0.5);
-  // solvers_["pilz_PTP"] = pilz_ptp_planner;
+  // Example: Initialize different solvers based on pipeline_name
+  if (pipeline_name == "pilz_industrial_motion_planner") {
+    // Initialize Pilz PTP Planner
+    auto pilz_ptp_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+    pilz_ptp_planner->setPlannerId(planner_id); // e.g., "PTP"
+    pilz_ptp_planner->setProperty("max_velocity_scaling_factor", 0.5);
+    pilz_ptp_planner->setProperty("max_acceleration_scaling_factor", 0.5);
+    solvers_["pilz_PTP"] = pilz_ptp_planner;
 
-  // // LIN Planner
-  // auto pilz_lin_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
-  // pilz_lin_planner->setPlannerId("pilz_industrial_motion_planner", "LIN");
-  // pilz_lin_planner->setProperty("max_velocity_scaling_factor", 0.2);
-  // pilz_lin_planner->setProperty("max_acceleration_scaling_factor", 0.2);
-  // solvers_["pilz_LIN"] = pilz_lin_planner;
+    // Initialize Pilz LIN Planner
+    auto pilz_lin_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+    pilz_lin_planner->setPlannerId(planner_id); // e.g., "LIN"
+    pilz_lin_planner->setProperty("max_velocity_scaling_factor", 0.2);
+    pilz_lin_planner->setProperty("max_acceleration_scaling_factor", 0.2);
+    solvers_["pilz_LIN"] = pilz_lin_planner;
 
-  // // CIRC Planner
-  // auto pilz_circ_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
-  // pilz_circ_planner->setPlannerId("pilz_industrial_motion_planner", "CIRC");
-  // pilz_circ_planner->setProperty("max_velocity_scaling_factor", 0.3);
-  // pilz_circ_planner->setProperty("max_acceleration_scaling_factor", 0.3);
-  // solvers_["pilz_CIRC"] = pilz_circ_planner;
+    // Initialize Pilz CIRC Planner
+    auto pilz_circ_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+    pilz_circ_planner->setPlannerId(planner_id); // e.g., "CIRC"
+    pilz_circ_planner->setProperty("max_velocity_scaling_factor", 0.3);
+    pilz_circ_planner->setProperty("max_acceleration_scaling_factor", 0.3);
+    solvers_["pilz_CIRC"] = pilz_circ_planner;
 
-  // RCLCPP_INFO(node_->get_logger(), "Initialized Pilz solvers: PTP, LIN, CIRC");
+    RCLCPP_INFO(node_->get_logger(), "Initialized Pilz solvers: PTP, LIN, CIRC");
 
-  // // Example OMPL planner
-  // auto ompl_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "ompl");
-  // ompl_planner->setPlannerId("RRTConnectkConfigDefault"); // Replace with your desired OMPL planner
-  // // Set any additional properties for OMPL
-  // ompl_planner->setProperty("max_velocity_scaling_factor", 0.8);
-  // ompl_planner->setProperty("max_acceleration_scaling_factor", 0.8);
-  // solvers_["ompl_RRTConnect"] = ompl_planner;
+    // Optionally, set a default active solver
+    if (!solvers_.empty()) {
+      current_solver_ = solvers_.begin()->second;
+      RCLCPP_INFO(node_->get_logger(), "Set active solver to %s", solvers_.begin()->first.c_str());
+    }
+  }
+  else if (pipeline_name == "ompl") {
+    // Initialize OMPL Planner
+    auto ompl_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "ompl");
+    ompl_planner->setPlannerId(planner_id); // e.g., "RRTConnectkConfigDefault"
+    ompl_planner->setProperty("max_velocity_scaling_factor", 0.8);
+    ompl_planner->setProperty("max_acceleration_scaling_factor", 0.8);
+    solvers_["ompl_RRTConnect"] = ompl_planner;
 
-  // RCLCPP_INFO(node_->get_logger(), "Initialized OMPL solver: RRTConnect");
+    RCLCPP_INFO(node_->get_logger(), "Initialized OMPL solver: RRTConnect");
+
+    // Set active solver
+    current_solver_ = solvers_["ompl_RRTConnect"];
+    RCLCPP_INFO(node_->get_logger(), "Set active solver to ompl_RRTConnect");
+  }
+  else {
+    RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name: %s", pipeline_name.c_str());
+    // Optionally, set to default solver or handle error
+    return;
+  }
+
+  // Save the selected solver configuration to the memory folder
+  std::string memory_dir = "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/memory/";
+  
+  // Ensure the memory directory exists
+  if (!fs::exists(memory_dir)) {
+    try {
+      fs::create_directories(memory_dir);
+      RCLCPP_INFO(node_->get_logger(), "Created memory directory at %s", memory_dir.c_str());
+    }
+    catch (const fs::filesystem_error& e) {
+      RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
+      return;
+    }
+  }
+
+  std::string config_file = memory_dir + "current_solver_config.yaml";
+  saveSolverConfig(config_file);
 }
 
 void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
@@ -134,8 +292,13 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
     joints_map[JOINT_NAMES[i]] = joint_values[i];
   }
 
+  if (!current_solver_) {
+    RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choose_pipeline first.");
+    return;
+  }
+
   // Create a MoveTo stage
-  auto stage = std::make_unique<mtc::stages::MoveTo>("move to joints", sampling_planner_);
+  auto stage = std::make_unique<mtc::stages::MoveTo>("move to joints", current_solver_);
   stage->setGroup(arm_group_name_);
   stage->setGoal(joints_map);  // <-- setGoal with a map
   stage->setTimeout(10.0);
@@ -164,8 +327,13 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
   goal_pose_stamped.pose.orientation.z = rz;
   goal_pose_stamped.pose.orientation.w = rw;
 
+  if (!current_solver_) {
+    RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choose_pipeline first.");
+    return;
+  }
+
   // Create a MoveTo stage
-  auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", sampling_planner_);
+  auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", current_solver_);
   stage->setGroup(arm_group_name_);
   stage->setGoal(goal_pose_stamped); // Correct: Pass PoseStamped
   stage->setIKFrame(tip_frame_); // Set IK frame to "world"
@@ -209,61 +377,116 @@ void TaskBuilder::displacementMove(const std::vector<double>& move_vector)
 
 void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory_poses)
 {
-    RCLCPP_INFO(node_->get_logger(), "[trajectory_move] Moving along a trajectory with %zu poses", trajectory_poses.size());
+  RCLCPP_INFO(node_->get_logger(),
+              "[trajectory_move] Moving along a trajectory with %zu poses",
+              trajectory_poses.size());
 
-    if (trajectory_poses.empty()) {
-        RCLCPP_ERROR(node_->get_logger(), "trajectoryMove() requires at least one pose");
-        return;
+  if (trajectory_poses.empty())
+  {
+    RCLCPP_ERROR(node_->get_logger(), "trajectoryMove() requires at least one pose");
+    return;
+  }
+
+  // 1) Get RobotModel from the Task
+  auto robot_model = task_.getRobotModel();
+  if (!robot_model)
+  {
+    RCLCPP_ERROR(node_->get_logger(), "No robot model found in the MTC task. Did you call initTask()?");
+    return;
+  }
+
+  // 2) Create a RobotState for IK
+  moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(robot_model);
+  robot_state->setToDefaultValues();
+
+  // 3) Prepare to store joint waypoints
+  std::vector<std::vector<double>> joint_waypoints;
+  const moveit::core::JointModelGroup* jmg = robot_model->getJointModelGroup(arm_group_name_);
+  if (!jmg)
+  {
+    RCLCPP_ERROR(node_->get_logger(), "Joint Model Group '%s' not found.", arm_group_name_.c_str());
+    return;
+  }
+
+  // 4) For each pose, do multiple IK attempts in a loop
+  for (size_t i = 0; i < trajectory_poses.size(); ++i)
+  {
+    const auto& pose = trajectory_poses[i];
+    
+    bool found_ik = false;
+    constexpr int    max_attempts        = 10;
+    constexpr double per_attempt_timeout = 0.01;
+
+    for (int attempt = 0; attempt < max_attempts && !found_ik; ++attempt)
+    {
+      found_ik = robot_state->setFromIK(
+        jmg,         // JointModelGroup
+        pose,        // Pose
+        tip_frame_,  // End-effector link name
+        per_attempt_timeout
+        // Optional: GroupStateValidityCallbackFn, KinematicsQueryOptions, ...
+      );
     }
 
-    // // Initialize RobotState
-    // moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(task_.robotModel());
-    // robot_state->setToDefaultValues();
+    if (!found_ik)
+    {
+      RCLCPP_ERROR(node_->get_logger(),
+                   "IK failed for pose #%zu after %d attempts.",
+                   i, max_attempts);
+      return;
+    }
 
-    // // Convert Poses to Joint Waypoints using IK
-    // std::vector<std::vector<double>> joint_waypoints;
-    // for (const auto& pose : trajectory_poses) {
-    //     bool found_ik = robot_state->setFromIK(task_.robotModel()->getJointModelGroup(arm_group_name_), pose, tip_frame_, 10, 0.1);
-    //     if (!found_ik) {
-    //         RCLCPP_ERROR(node_->get_logger(), "IK failed for a pose in trajectory.");
-    //         return;
-    //     }
-    //     joint_waypoints.emplace_back(robot_state->getJointGroupPositions(arm_group_name_));
-    // }
+    // Store the resulting joint positions
+    std::vector<double> current_joints;
+    robot_state->copyJointGroupPositions(jmg, current_joints);
+    joint_waypoints.push_back(std::move(current_joints));
+  }
 
-    // // Generate Spline Trajectory
-    // moveit_msgs::msg::RobotTrajectory robot_traj;
-    // bool success = generateSplineTrajectory(task_.robotModel(), joint_waypoints, robot_traj, 10.0, 0.05); // total_time=10s, time_step=50ms
-    // if (!success) {
-    //     RCLCPP_ERROR(node_->get_logger(), "Failed to generate spline trajectory.");
-    //     return;
-    // }
+  // 5) Build a RobotTrajectory from these joint waypoints
+  robot_trajectory::RobotTrajectory trajectory(robot_model, arm_group_name_);
 
-    // // Optionally, time parameterization to compute accurate timing and velocities
-    // trajectory_processing::IterativeParabolicTimeParameterization iptp;
-    // bool success_time = iptp.computeTimeStamps(robot_traj);
-    // if (!success_time) {
-    //     RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed.");
-    //     return;
-    // }
+  // Example total time of 10 seconds for the entire path
+  double total_time = 10.0;
+  double dt = (joint_waypoints.size() > 1)
+               ? total_time / (joint_waypoints.size() - 1)
+               : total_time;
 
-    // // Create a GenerateTrajectory stage
-    // auto generate_traj_stage = std::make_unique<mtc::stages::GenerateTrajectory>("Generate Spline Trajectory");
-    // generate_traj_stage->setRobotState(robot_state);
-    // generate_traj_stage->setTrajectory(robot_traj);
-    // task_.add(std::move(generate_traj_stage));
+  // Reuse 'robot_state' to add each waypoint into the trajectory
+  for (size_t i = 0; i < joint_waypoints.size(); ++i)
+  {
+    robot_state->setJointGroupPositions(jmg, joint_waypoints[i]);
+    // "time_from_start" for each waypoint
+    trajectory.addSuffixWayPoint(*robot_state, i * dt);
+  }
 
-    // // Create a ExecuteTrajectory stage
-    // auto execute_traj_stage = std::make_unique<mtc::stages::ExecuteTrajectory>("Execute Spline Trajectory");
-    // execute_traj_stage->properties().configureInitFrom(Stage::PARENT, { "group" });
-    // execute_traj_stage->setTrajectoryGenerator([&](const mtc::SolutionBase& solution, moveit_msgs::msg::RobotTrajectory& trajectory) -> bool {
-    //     trajectory = robot_traj;
-    //     return true;
-    // });
-    // task_.add(std::move(execute_traj_stage));
+  // 6) Time-parameterize using Iterative Parabolic Time Parameterization (IPTP)
+  trajectory_processing::IterativeParabolicTimeParameterization iptp;
+  bool success_time = iptp.computeTimeStamps(
+    trajectory,
+    0.7,  // velocity_scaling_factor
+    0.7   // acceleration_scaling_factor
+  );
+  if (!success_time)
+  {
+    RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed.");
+    return;
+  }
 
-    // RCLCPP_INFO(node_->get_logger(), "Added spline trajectory to the task.");
+  // 7) Optionally convert to a ROS message for logging, debugging, or manual execution
+  moveit_msgs::msg::RobotTrajectory robot_traj_msg;
+  trajectory.getRobotTrajectoryMsg(robot_traj_msg);
+
+  // Example: If you have a standard MoveIt controller interface or action client:
+  // some_trajectory_execution_client.execute(robot_traj_msg);
+
+  RCLCPP_INFO(node_->get_logger(),
+              "[trajectory_move] Successfully generated a time-parameterized "
+              "trajectory with %zu waypoints.",
+              joint_waypoints.size());
+
+  // Done! The trajectory is now fully time-parameterized and can be published or executed.
 }
+
 
 void TaskBuilder::feedbackMove()
 {

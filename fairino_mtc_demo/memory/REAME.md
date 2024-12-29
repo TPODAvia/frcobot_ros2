@@ -1,0 +1,1 @@
+This folder stores all data for the package to remember

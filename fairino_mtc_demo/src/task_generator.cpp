@@ -9,9 +9,9 @@ enum class CommandKind {
   REMOVE_OBJECT,
   SPAWN_OBJECT,
   CHOOSE_PIPELINE,
-  JOINTS_POSITION,
-  END_COORDINATE,
-  VECTOR_MOVE,
+  JOINTS_MOVE,
+  ABSOLUTE_MOVE,
+  DISPLACEMENT_MOVE,
   TRAJECTORY_MOVE,
   FEEDBACK_MOVE,
   GRIPPER_CLOSE,
@@ -28,9 +28,9 @@ static CommandKind parseCommand(const std::string& cmd)
   if (cmd == "remove_object")             return CommandKind::REMOVE_OBJECT;
   if (cmd == "spawn_object")              return CommandKind::SPAWN_OBJECT;
   if (cmd == "choose_pipeline")           return CommandKind::CHOOSE_PIPELINE;
-  if (cmd == "joints_position")           return CommandKind::JOINTS_POSITION;
-  if (cmd == "end_coordinate")            return CommandKind::END_COORDINATE;
-  if (cmd == "vector_move")               return CommandKind::VECTOR_MOVE;
+  if (cmd == "joints_move")               return CommandKind::JOINTS_MOVE;
+  if (cmd == "absolute_move")             return CommandKind::ABSOLUTE_MOVE;
+  if (cmd == "displacement_move")         return CommandKind::DISPLACEMENT_MOVE;
   if (cmd == "trajectory_move")           return CommandKind::TRAJECTORY_MOVE;
   if (cmd == "feedback_move")             return CommandKind::FEEDBACK_MOVE;
   if (cmd == "gripper_close")             return CommandKind::GRIPPER_CLOSE;
@@ -131,12 +131,12 @@ int main(int argc, char** argv)
       break;
     }
 
-    case CommandKind::JOINTS_POSITION:
+    case CommandKind::JOINTS_MOVE:
     {
-      // joints_position <j1> <j2> <j3> <j4> <j5> <j6>
+      // joints_move <j1> <j2> <j3> <j4> <j5> <j6>
       if (argc < 10) {
         RCLCPP_ERROR(node->get_logger(), 
-                     "Usage: joints_position <j1> <j2> <j3> <j4> <j5> <j6>");
+                     "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
         rclcpp::shutdown();
         return 1;
       }
@@ -144,24 +144,24 @@ int main(int argc, char** argv)
       for (int i = 4; i < 10; ++i) {
         joint_values.push_back(std::stod(argv[i]));
       }
-      builder.jointsPosition(joint_values);
+      builder.jointsMove(joint_values);
       break;
     }
 
 
-    case CommandKind::END_COORDINATE:
+    case CommandKind::ABSOLUTE_MOVE:
     {
-      // end_coordinate <frame_id> [x y z rx ry rz rw]
+      // absolute_move <frame_id> [x y z rx ry rz rw]
       if (argc < 5) {
         RCLCPP_ERROR(node->get_logger(), 
-                     "end_coordinate requires at least a frame_id");
+                     "absolute_move requires at least a frame_id");
         rclcpp::shutdown();
         return 1;
       }
       std::string frame_id = argv[4];
       // If exactly 5 args => pass default
       if (argc == 5) {
-        builder.endCoordinate(frame_id);
+        builder.absoluteMove(frame_id);
       } 
       // If >= 12 => parse the pose
       else if (argc >= 12) {
@@ -172,11 +172,11 @@ int main(int argc, char** argv)
         double ry = std::stod(argv[9]);
         double rz = std::stod(argv[10]);
         double rw = std::stod(argv[11]);
-        builder.endCoordinate(frame_id, x, y, z, rx, ry, rz, rw);
+        builder.absoluteMove(frame_id, x, y, z, rx, ry, rz, rw);
       } 
       else {
         RCLCPP_ERROR(node->get_logger(), 
-                     "Usage: end_coordinate <frame_id> [x y z rx ry rz rw]");
+                     "Usage: absolute_move <frame_id> [x y z rx ry rz rw]");
         rclcpp::shutdown();
         return 1;
       }
@@ -184,7 +184,7 @@ int main(int argc, char** argv)
     }
 
 
-    case CommandKind::VECTOR_MOVE:
+    case CommandKind::DISPLACEMENT_MOVE:
     {
       // vector_move <x> <y> <z>
       if (argc < 7) {
@@ -197,7 +197,7 @@ int main(int argc, char** argv)
       for (int i = 4; i < 7; ++i) {
         move_vector.push_back(std::stod(argv[i]));
       }
-      builder.vectorMove(move_vector);
+      builder.displacementMove(move_vector);
       break;
     }
 

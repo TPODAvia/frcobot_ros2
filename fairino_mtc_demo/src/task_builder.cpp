@@ -2,6 +2,7 @@
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/move_to.h>
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
 TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
                          const std::string& arm_group_name,
@@ -78,9 +79,42 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::st
 
   // sampling_planner_->setPlannerId(planner_id);
   // sampling_planner_->setPlannerInterfaceName(pipeline_name);
+
+  // // PTP Planner
+  // auto pilz_ptp_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+  // pilz_ptp_planner->setPlannerId("pilz_industrial_motion_planner", "PTP");
+  // pilz_ptp_planner->setProperty("max_velocity_scaling_factor", 0.5);
+  // pilz_ptp_planner->setProperty("max_acceleration_scaling_factor", 0.5);
+  // solvers_["pilz_PTP"] = pilz_ptp_planner;
+
+  // // LIN Planner
+  // auto pilz_lin_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+  // pilz_lin_planner->setPlannerId("pilz_industrial_motion_planner", "LIN");
+  // pilz_lin_planner->setProperty("max_velocity_scaling_factor", 0.2);
+  // pilz_lin_planner->setProperty("max_acceleration_scaling_factor", 0.2);
+  // solvers_["pilz_LIN"] = pilz_lin_planner;
+
+  // // CIRC Planner
+  // auto pilz_circ_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
+  // pilz_circ_planner->setPlannerId("pilz_industrial_motion_planner", "CIRC");
+  // pilz_circ_planner->setProperty("max_velocity_scaling_factor", 0.3);
+  // pilz_circ_planner->setProperty("max_acceleration_scaling_factor", 0.3);
+  // solvers_["pilz_CIRC"] = pilz_circ_planner;
+
+  // RCLCPP_INFO(node_->get_logger(), "Initialized Pilz solvers: PTP, LIN, CIRC");
+
+  // // Example OMPL planner
+  // auto ompl_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "ompl");
+  // ompl_planner->setPlannerId("RRTConnectkConfigDefault"); // Replace with your desired OMPL planner
+  // // Set any additional properties for OMPL
+  // ompl_planner->setProperty("max_velocity_scaling_factor", 0.8);
+  // ompl_planner->setProperty("max_acceleration_scaling_factor", 0.8);
+  // solvers_["ompl_RRTConnect"] = ompl_planner;
+
+  // RCLCPP_INFO(node_->get_logger(), "Initialized OMPL solver: RRTConnect");
 }
 
-void TaskBuilder::jointsPosition(const std::vector<double>& joint_values)
+void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 {
   // Example for a 6-joint robot; adapt to your robot’s actual joint names/count:
   static const std::vector<std::string> JOINT_NAMES = {
@@ -90,7 +124,7 @@ void TaskBuilder::jointsPosition(const std::vector<double>& joint_values)
   // Build a map<joint_name, value>
   if (joint_values.size() != JOINT_NAMES.size()) {
     RCLCPP_ERROR(node_->get_logger(), 
-      "jointsPosition() called with %zu values, but robot expects %zu joints",
+      "jointsMove() called with %zu values, but robot expects %zu joints",
       joint_values.size(), JOINT_NAMES.size());
     return;
   }
@@ -110,27 +144,49 @@ void TaskBuilder::jointsPosition(const std::vector<double>& joint_values)
   task_.add(std::move(stage));
 }
 
-void TaskBuilder::endCoordinate(const std::string& frame_id, 
+void TaskBuilder::absoluteMove(const std::string& frame_id, 
                                 double x, double y, double z,
                                 double rx, double ry, double rz, double rw)
 {
   RCLCPP_INFO(node_->get_logger(),
-    "[end_coordinate] frame_id=%s, xyz=(%.2f,%.2f,%.2f), quat=(%.2f,%.2f,%.2f,%.2f)",
+    "[absolute_move] frame_id=%s, xyz=(%.2f,%.2f,%.2f), quat=(%.2f,%.2f,%.2f,%.2f)",
     frame_id.c_str(), x, y, z, rx, ry, rz, rw);
 
-  // Example: create a MoveRelative or MoveTo stage (depending on your usage).
-  // For instance, a MoveRelative in the 'frame_id' coordinate frame:
-  auto stage = createMoveRelativeStage(tip_frame_, x, y, z);
+  // Define the absolute pose in "world" frame
+  geometry_msgs::msg::PoseStamped goal_pose_stamped;
+  goal_pose_stamped.header.frame_id = frame_id; // Set to "world"
+  goal_pose_stamped.header.stamp = node_->now();
+  goal_pose_stamped.pose.position.x = x;
+  goal_pose_stamped.pose.position.y = y;
+  goal_pose_stamped.pose.position.z = z;
+  goal_pose_stamped.pose.orientation.x = rx;
+  goal_pose_stamped.pose.orientation.y = ry;
+  goal_pose_stamped.pose.orientation.z = rz;
+  goal_pose_stamped.pose.orientation.w = rw;
+
+  // Create a MoveTo stage
+  auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", sampling_planner_);
+  stage->setGroup(arm_group_name_);
+  stage->setGoal(goal_pose_stamped); // Correct: Pass PoseStamped
+  stage->setIKFrame(tip_frame_); // Set IK frame to "world"
+  stage->setTimeout(10.0);
+
+  // Optionally, set additional properties if needed
+  // stage->properties().set("description", "Moving to absolute coordinate in world frame");
+
+  // Add to the task
   task_.add(std::move(stage));
+
+  RCLCPP_INFO(node_->get_logger(), "Added MoveTo stage to move to coordinate in frame '%s'.", frame_id.c_str());
 }
 
-void TaskBuilder::vectorMove(const std::vector<double>& move_vector)
+void TaskBuilder::displacementMove(const std::vector<double>& move_vector)
 {
   RCLCPP_INFO(node_->get_logger(), "[vector_move] Moving by vector (%.2f, %.2f, %.2f)", 
               move_vector[0], move_vector[1], move_vector[2]);
 
   if (move_vector.size() != 3) {
-    RCLCPP_ERROR(node_->get_logger(), "vectorMove() requires exactly 3 elements (x, y, z)");
+    RCLCPP_ERROR(node_->get_logger(), "displacementMove() requires exactly 3 elements (x, y, z)");
     return;
   }
 
@@ -151,39 +207,69 @@ void TaskBuilder::vectorMove(const std::vector<double>& move_vector)
   RCLCPP_INFO(node_->get_logger(), "Performed vector move.");
 }
 
-void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory)
+void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory_poses)
 {
-  RCLCPP_INFO(node_->get_logger(), "[trajectory_move] Moving along a trajectory with %zu poses", trajectory.size());
+    RCLCPP_INFO(node_->get_logger(), "[trajectory_move] Moving along a trajectory with %zu poses", trajectory_poses.size());
 
-  if (trajectory.empty()) {
-    RCLCPP_ERROR(node_->get_logger(), "trajectoryMove() requires at least one pose");
-    return;
-  }
+    if (trajectory_poses.empty()) {
+        RCLCPP_ERROR(node_->get_logger(), "trajectoryMove() requires at least one pose");
+        return;
+    }
 
-  // Implement trajectory movement using a pipeline planner or trajectory controller
-  // Example using MoveRelative stages for each pose (simplistic)
-  // for (size_t i = 0; i < trajectory.size(); ++i) {
-  //   const auto& pose = trajectory[i];
-  //   // Compute relative movement from current position (needs actual computation)
-  //   // Here, we just log and add MoveTo stages
-  //   RCLCPP_INFO(node_->get_logger(), "Adding trajectory pose %zu: (%.2f, %.2f, %.2f)", 
-  //               i + 1, pose.position.x, pose.position.y, pose.position.z);
-  //   // Create MoveTo stage for each pose
-  //   auto stage = std::make_unique<mtc::stages::MoveTo>("trajectory_pose_" + std::to_string(i + 1), sampling_planner_);
-  //   stage->setGroup(arm_group_name_);
-  //   stage->setGoal(pose);
-  //   stage->setTimeout(10.0);
-  //   task_.add(std::move(stage));
-  // }
+    // // Initialize RobotState
+    // moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(task_.robotModel());
+    // robot_state->setToDefaultValues();
 
-  RCLCPP_INFO(node_->get_logger(), "Executed trajectory move.");
+    // // Convert Poses to Joint Waypoints using IK
+    // std::vector<std::vector<double>> joint_waypoints;
+    // for (const auto& pose : trajectory_poses) {
+    //     bool found_ik = robot_state->setFromIK(task_.robotModel()->getJointModelGroup(arm_group_name_), pose, tip_frame_, 10, 0.1);
+    //     if (!found_ik) {
+    //         RCLCPP_ERROR(node_->get_logger(), "IK failed for a pose in trajectory.");
+    //         return;
+    //     }
+    //     joint_waypoints.emplace_back(robot_state->getJointGroupPositions(arm_group_name_));
+    // }
+
+    // // Generate Spline Trajectory
+    // moveit_msgs::msg::RobotTrajectory robot_traj;
+    // bool success = generateSplineTrajectory(task_.robotModel(), joint_waypoints, robot_traj, 10.0, 0.05); // total_time=10s, time_step=50ms
+    // if (!success) {
+    //     RCLCPP_ERROR(node_->get_logger(), "Failed to generate spline trajectory.");
+    //     return;
+    // }
+
+    // // Optionally, time parameterization to compute accurate timing and velocities
+    // trajectory_processing::IterativeParabolicTimeParameterization iptp;
+    // bool success_time = iptp.computeTimeStamps(robot_traj);
+    // if (!success_time) {
+    //     RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed.");
+    //     return;
+    // }
+
+    // // Create a GenerateTrajectory stage
+    // auto generate_traj_stage = std::make_unique<mtc::stages::GenerateTrajectory>("Generate Spline Trajectory");
+    // generate_traj_stage->setRobotState(robot_state);
+    // generate_traj_stage->setTrajectory(robot_traj);
+    // task_.add(std::move(generate_traj_stage));
+
+    // // Create a ExecuteTrajectory stage
+    // auto execute_traj_stage = std::make_unique<mtc::stages::ExecuteTrajectory>("Execute Spline Trajectory");
+    // execute_traj_stage->properties().configureInitFrom(Stage::PARENT, { "group" });
+    // execute_traj_stage->setTrajectoryGenerator([&](const mtc::SolutionBase& solution, moveit_msgs::msg::RobotTrajectory& trajectory) -> bool {
+    //     trajectory = robot_traj;
+    //     return true;
+    // });
+    // task_.add(std::move(execute_traj_stage));
+
+    // RCLCPP_INFO(node_->get_logger(), "Added spline trajectory to the task.");
 }
 
 void TaskBuilder::feedbackMove()
 {
   RCLCPP_INFO(node_->get_logger(), "[feedback_move] Executing feedback-based move");
 
-  // Implement feedback-based movement, e.g., using controllers or monitoring
+  // Implement feedback-based movement, e.g., using hand movement or monitoring
   // This is highly application-specific and may involve ROS actions or services
 
   // Example placeholder:
@@ -268,23 +354,4 @@ bool TaskBuilder::executeTask()
   }
   RCLCPP_INFO(node_->get_logger(), "Task execution SUCCESS!");
   return true;
-}
-
-std::unique_ptr<mtc::stages::MoveRelative>
-TaskBuilder::createMoveRelativeStage(const std::string& name, double x, double y, double z)
-{
-  auto stage = std::make_unique<mtc::stages::MoveRelative>(name, cartesian_planner_);
-  stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  stage->setMinMaxDistance(0.1, 0.2);
-  stage->setIKFrame(tip_frame_);
-  stage->properties().set("marker_ns", name);
-
-  geometry_msgs::msg::Vector3Stamped vec;
-  vec.header.frame_id = "world";
-  vec.vector.x = x;
-  vec.vector.y = y;
-  vec.vector.z = z;
-  stage->setDirection(vec);
-
-  return stage;
 }

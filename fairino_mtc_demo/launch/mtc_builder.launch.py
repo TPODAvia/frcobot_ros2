@@ -22,10 +22,12 @@ def generate_launch_description():
         parameters=[moveit_config],
         arguments=[arm_group_name,
                    tip_frame,
+                #    "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
+                #    "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
                 #    "clear_scene"
                 #    "spawn_object", "object", "1", "1", "1", "0", "0", "0", "1"
                 #    "attach_object", "object", tip_frame
-                   "detach_object", "object", tip_frame
+                #    "detach_object", "object", tip_frame
                    ]         
                    # 3) command to run
     )

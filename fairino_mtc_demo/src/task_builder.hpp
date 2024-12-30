@@ -67,6 +67,8 @@ public:
   
   // Move manipulator along a trajectory
   void trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory);
+  void trajectoryMoveV(const std::vector<geometry_msgs::msg::Pose>& trajectory,
+                      const std::vector<geometry_msgs::msg::Twist>& velocities);
   
   // Move manipulator with feedback (e.g., using feedback control)
   void feedbackMove();

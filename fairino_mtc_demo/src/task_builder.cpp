@@ -488,6 +488,110 @@ void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& tr
 }
 
 
+void TaskBuilder::trajectoryMoveV(const std::vector<geometry_msgs::msg::Pose>& trajectory,
+                                 const std::vector<geometry_msgs::msg::Twist>& velocities)
+{
+  RCLCPP_INFO(node_->get_logger(),
+    "[trajectory_move w/ vel] #poses=%zu, #vel=%zu",
+    trajectory.size(), velocities.size());
+
+  if (trajectory.size() != velocities.size() || trajectory.empty()) {
+    RCLCPP_ERROR(node_->get_logger(), 
+      "Mismatch in #poses and #velocities, or empty input. Aborting!");
+    return;
+  }
+
+  // 1) Robot model
+  auto robot_model = task_.getRobotModel();
+  if (!robot_model) {
+    RCLCPP_ERROR(node_->get_logger(), "No robot model found. Did you call initTask()?");
+    return;
+  }
+
+  // 2) IK
+  moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(robot_model);
+  robot_state->setToDefaultValues();
+  const moveit::core::JointModelGroup* jmg = robot_model->getJointModelGroup(arm_group_name_);
+  if (!jmg) {
+    RCLCPP_ERROR(node_->get_logger(), "Joint Model Group '%s' not found.", arm_group_name_.c_str());
+    return;
+  }
+
+  std::vector<std::vector<double>> joint_waypoints;
+  joint_waypoints.reserve(trajectory.size());
+
+  for (size_t i = 0; i < trajectory.size(); ++i)
+  {
+    const auto& pose = trajectory[i];
+    bool found_ik = false;
+    constexpr int max_attempts = 10;
+    constexpr double per_attempt_timeout = 0.01;
+
+    for (int attempt = 0; attempt < max_attempts && !found_ik; ++attempt) {
+      found_ik = robot_state->setFromIK(jmg, pose, tip_frame_, per_attempt_timeout);
+    }
+
+    if (!found_ik) {
+      RCLCPP_ERROR(node_->get_logger(), "IK failed for waypoint %zu", i);
+      return;
+    }
+    // Store joint positions
+    std::vector<double> joints_now;
+    robot_state->copyJointGroupPositions(jmg, joints_now);
+    joint_waypoints.push_back(joints_now);
+  }
+
+  // 3) Build RobotTrajectory
+  robot_trajectory::RobotTrajectory rt(robot_model, arm_group_name_);
+
+  // We'll do a naive time estimate by using the linear velocity magnitude 
+  // between successive waypoints. This is very approximate:
+  double time_so_far = 0.0;
+  for (size_t i = 0; i < joint_waypoints.size(); ++i)
+  {
+    // Put the joints in `robot_state`:
+    robot_state->setJointGroupPositions(jmg, joint_waypoints[i]);
+
+    // Add to the trajectory
+    rt.addSuffixWayPoint(*robot_state, time_so_far);
+
+    if (i + 1 < joint_waypoints.size()) {
+      // distance in cartesian space from pose[i] to pose[i+1]
+      auto dx = trajectory[i+1].position.x - trajectory[i].position.x;
+      auto dy = trajectory[i+1].position.y - trajectory[i].position.y;
+      auto dz = trajectory[i+1].position.z - trajectory[i].position.z;
+      double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+      // We'll treat `velocities[i].linear` as the speed in m/s
+      double speed = std::sqrt(
+        velocities[i].linear.x * velocities[i].linear.x +
+        velocities[i].linear.y * velocities[i].linear.y +
+        velocities[i].linear.z * velocities[i].linear.z
+      );
+      // Avoid divide by zero
+      if (speed < 1e-6) speed = 0.01;
+
+      double dt = dist / speed;
+      time_so_far += dt;
+    }
+  }
+
+  // 4) Time parameterization
+  trajectory_processing::IterativeParabolicTimeParameterization iptp;
+  if (!iptp.computeTimeStamps(rt, 0.7, 0.7)) {
+    RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed");
+    return;
+  }
+
+  // 5) Convert to msg or do further usage
+  moveit_msgs::msg::RobotTrajectory robot_traj_msg;
+  rt.getRobotTrajectoryMsg(robot_traj_msg);
+
+  RCLCPP_INFO(node_->get_logger(),
+    "Trajectory with velocities was created with %zu waypoints", joint_waypoints.size());
+}
+
+
 void TaskBuilder::feedbackMove()
 {
   RCLCPP_INFO(node_->get_logger(), "[feedback_move] Executing feedback-based move");

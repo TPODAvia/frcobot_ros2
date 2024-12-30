@@ -28,9 +28,10 @@ enum class CommandKind {
   ATTACH_OBJECT,
   DETACH_OBJECT,
   DELETE_JSON_SIM_CONTENT,
-  SCAN_LINE,           // 1) Scan an object with a line trajectory
-  CALIBRATE_CAMERA,    // 2) Calibrate camera with 20 positions
-  GCODE_TO_TRAJECTORY, // 3) Convert G-code to trajectory
+  SCAN_LINE,
+  CALIBRATE_CAMERA,
+  GCODE_MOVE,
+  STEP_MOVE,
 
   UNKNOWN
 };
@@ -55,7 +56,8 @@ static CommandKind parseCommand(const std::string& cmd)
   if (cmd == "delete_json_sim_content")   return CommandKind::DELETE_JSON_SIM_CONTENT;
   if (cmd == "scan_line")                 return CommandKind::SCAN_LINE;
   if (cmd == "calibrate_camera")          return CommandKind::CALIBRATE_CAMERA;
-  if (cmd == "gcode_to_trajectory")       return CommandKind::GCODE_TO_TRAJECTORY;
+  if (cmd == "gcode_move")                return CommandKind::GCODE_MOVE;
+  if (cmd == "step_move")                 return CommandKind::STEP_MOVE;
 
   return CommandKind::UNKNOWN;
 }
@@ -131,6 +133,170 @@ static std::vector<geometry_msgs::msg::Pose> parseGCodeFile(const std::string& f
 
   file.close();
   return path;
+}
+
+static std::vector<geometry_msgs::msg::Pose> parseStepFile(const std::string& filename)
+{
+  std::vector<geometry_msgs::msg::Pose> result;
+  std::ifstream file(filename);
+  if (!file.is_open()) {
+    std::cerr << "parseStepFile: could not open file: " << filename << std::endl;
+    return result;
+  }
+
+  // We'll store lines in memory to do multiple passes
+  std::vector<std::string> lines;
+  {
+    std::string line;
+    while (std::getline(file, line))
+      lines.push_back(line);
+  }
+  file.close();
+
+  // 1) Identify a B-spline definition. For example:
+  //   #47=B_SPLINE_CURVE_WITH_KNOTS('',5,(#59,#60,#61, ... ), ...
+  //   We'll do a naive search for the first occurrence
+  std::string spline_ref; // e.g. "#47"
+  std::vector<std::string> cartesian_refs; // e.g. "#59", "#60", ...
+  for (auto& l : lines) {
+    if (l.find("B_SPLINE_CURVE_WITH_KNOTS") != std::string::npos) {
+      // Save the entire line
+      spline_ref = l;
+      break;
+    }
+  }
+  if (spline_ref.empty()) {
+    std::cerr << "No B_SPLINE_CURVE_WITH_KNOTS found in " << filename << std::endl;
+    return result;
+  }
+
+  // 2) Extract the references to the CARTESIAN_POINTs. 
+  //    For example, from:
+  //    #47=B_SPLINE_CURVE_WITH_KNOTS('',5,(#59,#60,#61,#62,#63,#64,#65,#66,#67,#68),....
+  //    We want "59", "60", "61", etc.
+  {
+    // naive parse: find "(#"
+    auto startPos = spline_ref.find("(#");
+    if (startPos == std::string::npos) {
+      std::cerr << "Could not parse control points list." << std::endl;
+      return result;
+    }
+    // find the matching closing parenthesis
+    auto endPos = spline_ref.find(")", startPos);
+    if (endPos == std::string::npos) {
+      std::cerr << "Could not parse control points list (no closing parenthesis)." << std::endl;
+      return result;
+    }
+    // substring of "#59,#60,#61,..."
+    std::string refs = spline_ref.substr(startPos, endPos - startPos);
+
+    // Now split on commas
+    // e.g. "(#59,#60,#61,#62,#63,#64,#65,#66,#67,#68"
+    // remove parentheses first
+    refs.erase(std::remove(refs.begin(), refs.end(), '('), refs.end());
+    refs.erase(std::remove(refs.begin(), refs.end(), ')'), refs.end());
+    // now " #59,#60,#61,#62,#63,#64,#65,#66,#67,#68"
+    std::stringstream ss(refs);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+      // token: e.g. "#59"
+      // trim spaces
+      if (!token.empty() && token.find("#") != std::string::npos) {
+        cartesian_refs.push_back(token);
+      }
+    }
+  }
+  if (cartesian_refs.empty()) {
+    std::cerr << "No cartesian point references found." << std::endl;
+    return result;
+  }
+
+  // 3) For each reference #xx, find the corresponding line with CARTESIAN_POINT, 
+  //    parse out the X, Y, Z. We'll store them in a vector
+  //    e.g.: #59=CARTESIAN_POINT('',(-61.5859780503913,-48.5929862720562,42.201469967362));
+  struct Point3 {
+    double x, y, z;
+  };
+  std::vector<Point3> control_points;
+  for (auto& ref : cartesian_refs) {
+    // Find line that starts with ref + "=" and "CARTESIAN_POINT"
+    for (auto& l : lines) {
+      if (l.rfind(ref + "=", 0) == 0 && 
+          l.find("CARTESIAN_POINT") != std::string::npos) {
+        // parse out "(-61.5859, -48.5929, 42.2014)"
+        auto startP = l.find("(");
+        auto endP   = l.find(")", startP+1);
+        if (startP == std::string::npos || endP == std::string::npos) {
+          continue;
+        }
+        std::string coords = l.substr(startP+1, endP - (startP+1));
+        // coords e.g. "-61.5859,-48.5929,42.2014"
+        std::stringstream ssc(coords);
+        std::string val;
+        std::vector<double> vals;
+        while (std::getline(ssc, val, ',')) {
+          vals.push_back(std::stod(val));
+        }
+        if (vals.size() == 3) {
+          control_points.push_back({vals[0], vals[1], vals[2]});
+        }
+        break;
+      }
+    }
+  }
+
+  // 4) Minimal check if it is "correct to handle" 
+  if (control_points.size() < 2) {
+    std::cerr << "Not enough control points to form a curve." << std::endl;
+    return result;
+  }
+
+  // 5) Create a (potentially) B-spline. 
+  //    For demonstration, we can use a simple Eigen::Spline or just 
+  //    linearly sample control points. 
+  //    Let's do a naive uniform sampling:
+  
+  //    If you want a real B-spline interpolation, you’d do something like:
+  //      Eigen::MatrixXd data(3, control_points.size());
+  //      for (size_t i=0; i<control_points.size(); i++){
+  //        data(0,i) = control_points[i].x;
+  //        data(1,i) = control_points[i].y;
+  //        data(2,i) = control_points[i].z;
+  //      }
+  //      auto spline = Eigen::SplineFitter<double>::Interpolate(data, 3);
+  //      // Then sample the spline
+  //
+  //    For brevity, let's do a simpler approach: 
+  int num_samples = 20; 
+  for (int i = 0; i < num_samples; ++i) {
+    double t = (double)i / (num_samples - 1); // range [0..1]
+    // scale that to index in [0..control_points.size()-1]
+    double float_index = t * (control_points.size() - 1);
+
+    // integer portion:
+    int idx0 = (int)std::floor(float_index);
+    int idx1 = std::min(idx0 + 1, (int)control_points.size()-1);
+    double ratio = float_index - (double)idx0;
+
+    // linear interpolation between idx0 and idx1
+    double x = control_points[idx0].x + ratio * (control_points[idx1].x - control_points[idx0].x);
+    double y = control_points[idx0].y + ratio * (control_points[idx1].y - control_points[idx0].y);
+    double z = control_points[idx0].z + ratio * (control_points[idx1].z - control_points[idx0].z);
+
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = y;
+    pose.position.z = z;
+    // Just use an identity orientation (adjust as needed)
+    pose.orientation.x = 0.0;
+    pose.orientation.y = 0.0;
+    pose.orientation.z = 0.0;
+    pose.orientation.w = 1.0;
+
+    result.push_back(pose);
+  }
+
+  return result;
 }
 
 int main(int argc, char** argv)
@@ -293,29 +459,83 @@ int main(int argc, char** argv)
 
     case CommandKind::TRAJECTORY_MOVE:
     {
-      // trajectory_move <pose1_x> <pose1_y> <pose1_z> <pose1_rx> <pose1_ry> <pose1_rz> <pose1_rw>
-      //                ... (repeat for more poses) ...
-      // Assuming 7 arguments per pose
-      if ((argc - 4) % 7 != 0 || argc < 11) {
-        RCLCPP_ERROR(node->get_logger(),
-                     "Usage: trajectory_move <p1_x> <p1_y> <p1_z> <p1_rx> <p1_ry> <p1_rz> <p1_rw> ...");
-        rclcpp::shutdown();
-        return 1;
+      // Option 1) user calls:
+      //   trajectory_move p1_x p1_y p1_z p1_rx p1_ry p1_rz p1_rw ...
+      //
+      // Option 2) user calls (with --use-vel):
+      //   trajectory_move --use-vel p1_x p1_y p1_z p1_rx p1_ry p1_rz p1_rw p1_vx p1_vy p1_vz ...
+      //
+      // Decide which parsing approach to use
+      bool use_velocities = false;
+      int start_index = 4; 
+      if (std::string(argv[4]) == "--use-vel") {
+        use_velocities = true;
+        start_index = 5;
       }
-      std::vector<geometry_msgs::msg::Pose> trajectory;
-      int num_poses = (argc - 4) / 7;
-      for (int p = 0; p < num_poses; ++p) {
-        geometry_msgs::msg::Pose pose;
-        pose.position.x = std::stod(argv[4 + p * 7]);
-        pose.position.y = std::stod(argv[5 + p * 7]);
-        pose.position.z = std::stod(argv[6 + p * 7]);
-        pose.orientation.x = std::stod(argv[7 + p * 7]);
-        pose.orientation.y = std::stod(argv[8 + p * 7]);
-        pose.orientation.z = std::stod(argv[9 + p * 7]);
-        pose.orientation.w = std::stod(argv[10 + p * 7]);
-        trajectory.push_back(pose);
+
+      if (!use_velocities)
+      {
+        // ------- Original positions-only parsing -------
+        // Must have multiples of 7 from `start_index`
+        if (((argc - start_index) % 7 != 0) || (argc - start_index) < 7) {
+          RCLCPP_ERROR(node->get_logger(),
+                      "Usage (positions only): trajectory_move [--use-vel] <p1_x> <p1_y> <p1_z> <p1_rx> <p1_ry> <p1_rz> <p1_rw> ...");
+          rclcpp::shutdown();
+          return 1;
+        }
+        std::vector<geometry_msgs::msg::Pose> trajectory;
+        int num_poses = (argc - start_index) / 7;
+        for (int p = 0; p < num_poses; ++p) {
+          geometry_msgs::msg::Pose pose;
+          pose.position.x    = std::stod(argv[start_index + p * 7 + 0]);
+          pose.position.y    = std::stod(argv[start_index + p * 7 + 1]);
+          pose.position.z    = std::stod(argv[start_index + p * 7 + 2]);
+          pose.orientation.x = std::stod(argv[start_index + p * 7 + 3]);
+          pose.orientation.y = std::stod(argv[start_index + p * 7 + 4]);
+          pose.orientation.z = std::stod(argv[start_index + p * 7 + 5]);
+          pose.orientation.w = std::stod(argv[start_index + p * 7 + 6]);
+          trajectory.push_back(pose);
+        }
+        // Original function call
+        builder.trajectoryMove(trajectory);
       }
-      builder.trajectoryMove(trajectory);
+      else
+      {
+        // ------- Positions + velocities parsing -------
+        // We expect 13 values per waypoint: 
+        // 7 for pose + 6 for velocity (vx, vy, vz, wx, wy, wz)
+        // Adjust to your needs (some prefer linear + angular speeds or something else).
+        if (((argc - start_index) % 13 != 0) || (argc - start_index) < 13) {
+          RCLCPP_ERROR(node->get_logger(),
+                      "Usage (with velocities): trajectory_move --use-vel <p1_x> ... <p1_w> <p1_vx> <p1_vy> <p1_vz> <p1_wx> <p1_wy> <p1_wz> ...");
+          rclcpp::shutdown();
+          return 1;
+        }
+        int num_waypoints = (argc - start_index) / 13;
+        std::vector<geometry_msgs::msg::Pose>   poses(num_waypoints);
+        std::vector<geometry_msgs::msg::Twist>  velocities(num_waypoints);
+
+        for (int i = 0; i < num_waypoints; ++i) {
+          int base = start_index + i * 13;
+          poses[i].position.x    = std::stod(argv[base + 0]);
+          poses[i].position.y    = std::stod(argv[base + 1]);
+          poses[i].position.z    = std::stod(argv[base + 2]);
+          poses[i].orientation.x = std::stod(argv[base + 3]);
+          poses[i].orientation.y = std::stod(argv[base + 4]);
+          poses[i].orientation.z = std::stod(argv[base + 5]);
+          poses[i].orientation.w = std::stod(argv[base + 6]);
+
+          velocities[i].linear.x  = std::stod(argv[base + 7]);
+          velocities[i].linear.y  = std::stod(argv[base + 8]);
+          velocities[i].linear.z  = std::stod(argv[base + 9]);
+          velocities[i].angular.x = std::stod(argv[base + 10]);
+          velocities[i].angular.y = std::stod(argv[base + 11]);
+          velocities[i].angular.z = std::stod(argv[base + 12]);
+        }
+
+        // Call the new variant that accepts velocities
+        builder.trajectoryMoveV(poses, velocities);
+      }
       break;
     }
 
@@ -479,15 +699,16 @@ int main(int argc, char** argv)
       break;
     }
 
-    case CommandKind::GCODE_TO_TRAJECTORY:
+
+    case CommandKind::GCODE_MOVE:
     {
       // Example usage:
-      //   gcode_to_trajectory <gcode_filename>
+      //   GCODE_MOVE <gcode_filename>
       // We'll parse the G-code lines, convert them to a list of poses,
       // then run trajectoryMove.
       if (argc < 5) {
         RCLCPP_ERROR(node->get_logger(),
-                     "Usage: gcode_to_trajectory <gcode_filename>");
+                     "Usage: GCODE_MOVE <gcode_filename>");
         rclcpp::shutdown();
         return 1;
       }
@@ -506,6 +727,31 @@ int main(int argc, char** argv)
       break;
     }
 
+    case CommandKind::STEP_MOVE:
+    {
+      // Usage example: step_move <filename>
+      if (argc < 5) {
+        RCLCPP_ERROR(node->get_logger(), "Usage: step_move <step_filename>");
+        rclcpp::shutdown();
+        return 1;
+      }
+      std::string step_filename = argv[4];
+      // We'll create a new function to parse the B-spline(s) from the file:
+      auto curve_poses = parseStepFile(step_filename);
+
+      // Basic check
+      if (curve_poses.empty()) {
+        RCLCPP_ERROR(node->get_logger(), "No valid poses generated from STEP file: %s", step_filename.c_str());
+        rclcpp::shutdown();
+        return 1;
+      }
+
+      // Pass to the normal trajectory move
+      builder.trajectoryMove(curve_poses);
+      break;
+    }
+
+
     default:
     {
       RCLCPP_ERROR(node->get_logger(), "Unknown command: %s", command_str.c_str());
@@ -513,6 +759,7 @@ int main(int argc, char** argv)
       return 1;
     }
   }
+
 
   // Once we've added MTC stages for the chosen command, plan & execute the Task
   if (!builder.initTask()) {

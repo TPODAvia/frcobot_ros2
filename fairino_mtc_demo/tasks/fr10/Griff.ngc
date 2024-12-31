@@ -1,5 +1,3 @@
-(Material Holz oder Juwelierwachs / Durchmesser 30mm / Nullpunkt: x=Werkstückmitte, y=Werkstückmitte auf Drehachse, z=Materialoberflaeche)
-(material wood or jeweler wax / diameter 30mm / length 70mm or more / zero point: x=middle work piece, y=center work piece on turning axis, z=surface material)
 N08 G21
 N10 M06 T1
 N12 G43 H1

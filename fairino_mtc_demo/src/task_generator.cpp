@@ -17,6 +17,7 @@
 #include "task_builder.hpp"
 
 enum class CommandKind {
+  ROBOT_PARAM,
   CLEAR_SCENE,
   REMOVE_OBJECT,
   SPAWN_OBJECT,
@@ -34,8 +35,8 @@ enum class CommandKind {
   DELETE_JSON_SIM_CONTENT,
   SCAN_LINE,
   CALIBRATE_CAMERA,
-  GCODE_MOVE,
-  STEP_MOVE,
+  GCODE_LOAD,
+  STEP_LOAD,
 
   UNKNOWN
 };
@@ -43,6 +44,7 @@ enum class CommandKind {
 // Extend parseCommand to handle the 3 new commands
 static CommandKind parseCommand(const std::string& cmd)
 {
+  if (cmd == "get_robot_param")           return CommandKind::ROBOT_PARAM;
   if (cmd == "clear_scene")               return CommandKind::CLEAR_SCENE;
   if (cmd == "remove_object")             return CommandKind::REMOVE_OBJECT;
   if (cmd == "spawn_object")              return CommandKind::SPAWN_OBJECT;
@@ -60,8 +62,8 @@ static CommandKind parseCommand(const std::string& cmd)
   if (cmd == "delete_json_sim_content")   return CommandKind::DELETE_JSON_SIM_CONTENT;
   if (cmd == "scan_line")                 return CommandKind::SCAN_LINE;
   if (cmd == "calibrate_camera")          return CommandKind::CALIBRATE_CAMERA;
-  if (cmd == "gcode_move")                return CommandKind::GCODE_MOVE;
-  if (cmd == "step_move")                 return CommandKind::STEP_MOVE;
+  if (cmd == "gcode_load")                return CommandKind::GCODE_LOAD;
+  if (cmd == "step_load")                 return CommandKind::STEP_LOAD;
 
   return CommandKind::UNKNOWN;
 }
@@ -526,11 +528,17 @@ int main(int argc, char** argv)
 
   // Create your MTC builder
   TaskBuilder builder(node, arm_group_name, tip_frame);
-  // builder.newTask("demo_task"); // just an arbitrary label
+  builder.newTask("demo_task"); // just an arbitrary label
 
   // Switch on the parsed command
   switch (parseCommand(command_str))
   {
+    case CommandKind::ROBOT_PARAM:
+    {
+      builder.printRobotParams();
+      break;
+    }
+
     case CommandKind::CLEAR_SCENE:
     {
       builder.clearScene();
@@ -895,15 +903,15 @@ int main(int argc, char** argv)
     }
 
 
-    case CommandKind::GCODE_MOVE:
+    case CommandKind::GCODE_LOAD:
     {
       // Example usage:
-      //   gcode_move <gcode_filename>
+      //   gcode_load <gcode_filename>
       // We'll parse the G-code lines, convert them to a list of poses,
       // then run trajectoryMove.
       if (argc < 5) {
         RCLCPP_ERROR(node->get_logger(),
-                     "Usage: gcode_move <gcode_filename>");
+                     "Usage: gcode_load <gcode_filename>");
         rclcpp::shutdown();
         return 1;
       }
@@ -927,11 +935,11 @@ int main(int argc, char** argv)
       break;
     }
 
-    case CommandKind::STEP_MOVE:
+    case CommandKind::STEP_LOAD:
     {
-      // Usage example: step_move <filename>
+      // Usage example: step_load <filename>
       if (argc < 5) {
-        RCLCPP_ERROR(node->get_logger(), "Usage: step_move <step_filename>");
+        RCLCPP_ERROR(node->get_logger(), "Usage: step_load <step_filename>");
         rclcpp::shutdown();
         return 1;
       }

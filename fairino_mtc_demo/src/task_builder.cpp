@@ -117,6 +117,129 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
   }
 }
 
+
+void TaskBuilder::printRobotParams() const
+{
+  // The MTC task stores the RobotModel internally once you call `task_.loadRobotModel(...)`
+  // or once you call `task_.init()`. So let's fetch it:
+  auto robot_model = task_.getRobotModel();
+  if (!robot_model)
+  {
+    RCLCPP_WARN(node_->get_logger(),
+                "No robot model is currently loaded in the MTC Task. "
+                "Please call initTask() before trying to query robot parameters.");
+    return;
+  }
+
+  // ----------------------------------------------------------------------------
+  // get_planning_frame is basically the top-level frame in which the robot is defined
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_planning_frame:");
+  RCLCPP_INFO(node_->get_logger(), "  %s", robot_model->getModelFrame().c_str());
+
+  // ----------------------------------------------------------------------------
+  // get_root_link: The name of the root link in the URDF tree
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_root_link:");
+  RCLCPP_INFO(node_->get_logger(), "  %s", robot_model->getRootLinkName().c_str());
+
+  // ----------------------------------------------------------------------------
+  // get_active_joint_names: typically for the "arm" group, if specified
+  // ----------------------------------------------------------------------------
+  const moveit::core::JointModelGroup* jmg =
+      robot_model->getJointModelGroup(arm_group_name_);
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_active_joint_names (Group: %s):",
+              arm_group_name_.c_str());
+  if (!jmg)
+  {
+    RCLCPP_WARN(node_->get_logger(),
+                "No JointModelGroup found for group name '%s'. "
+                "Check your MoveIt configuration.",
+                arm_group_name_.c_str());
+  }
+  else
+  {
+    for (const auto& aj : jmg->getActiveJointModelNames())
+      RCLCPP_INFO(node_->get_logger(), "  %s", aj.c_str());
+  }
+
+  // ----------------------------------------------------------------------------
+  // get_joint_names: all joints in the entire robot model
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_joint_names (entire robot):");
+  for (const auto& joint_name : robot_model->getJointModelNames())
+    RCLCPP_INFO(node_->get_logger(), "  %s", joint_name.c_str());
+
+  // ----------------------------------------------------------------------------
+  // get_link_names: all links in the entire robot model
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_link_names (entire robot):");
+  for (const auto& link_name : robot_model->getLinkModelNames())
+    RCLCPP_INFO(node_->get_logger(), "  %s", link_name.c_str());
+
+  // ----------------------------------------------------------------------------
+  // get_group_names: all JointModelGroups defined in the SRDF
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_group_names:");
+  for (const auto& group_name : robot_model->getJointModelGroupNames())
+    RCLCPP_INFO(node_->get_logger(), "  %s", group_name.c_str());
+
+  // ----------------------------------------------------------------------------
+  // get_robot_markers: not directly available as a single API call in C++,
+  // but typically you would publish a MarkerArray or similar. 
+  // We'll just note that it doesn't have a 1:1 equivalent in the C++ API.
+  // In Python’s MoveIt Commander, get_robot_markers() can return a displayable set of markers for RViz. 
+  // In C++, there isn’t a single built-in method on the RobotModel or RobotState that returns a full marker 
+  // array. Typically, you’d use rviz_visual_tools or the moveit_visual_tools library to publish a marker array. 
+  // If you need that functionality, you’d do something like:
+
+  // #include <moveit_visual_tools/moveit_visual_tools.h>
+
+  // moveit_visual_tools::MoveItVisualTools visual_tools("world");
+  // visual_tools.loadRobotStatePub("/display_robot_state");
+  // visual_tools.loadMarkerPub();
+
+  // visual_tools.publishRobotState(robot_state, rviz_visual_tools::DEFAULT);
+  // visual_tools.trigger();
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(),
+              "get_robot_markers: (no direct equivalent in MoveIt C++ API).");
+
+  // ----------------------------------------------------------------------------
+  // get_current_state: typically from the PlanningScene or from the "current state" stage.
+  // If you want the raw MTC "current state" stage, you can introspect the Task's stages.
+  // Here, we'll just build a RobotState with default values as a demonstration.
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_current_state:");
+  {
+    moveit::core::RobotState default_state(robot_model);
+    default_state.setToDefaultValues();  // e.g. "home" or zero angles
+    // Print out each joint variable
+    const auto& var_names = default_state.getVariableNames();
+    const auto& var_values = default_state.getVariablePositions();
+    for (std::size_t i = 0; i < var_names.size(); ++i)
+    {
+      RCLCPP_INFO(node_->get_logger(), "  %s: %f", var_names[i].c_str(), var_values[i]);
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // get_current_variable_values: same as above, typically from RobotState
+  // or from hardware feedback if you have a real robot driver.
+  // We'll treat it as the same for demonstration.
+  // ----------------------------------------------------------------------------
+  RCLCPP_INFO(node_->get_logger(), "****************************************************");
+  RCLCPP_INFO(node_->get_logger(), "get_current_variable_values: (same as above)");
+}
+
 void TaskBuilder::clearScene()
 {
   RCLCPP_INFO(node_->get_logger(), "[clear_scene] Called");

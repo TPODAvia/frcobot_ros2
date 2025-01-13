@@ -21,17 +21,32 @@ def generate_launch_description():
         output="screen",
         parameters=[moveit_config],
         arguments=[arm_group_name,
-                   tip_frame,
-                   "gcode_move", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"
-                #    "step_move", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/model2.stp"
-                #    "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
-                #    "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
-                #    "clear_scene"
-                #    "spawn_object", "object", "1", "1", "1", "0", "0", "0", "1"
-                #    "attach_object", "object", tip_frame
-                #    "detach_object", "object", tip_frame
-                   ]         
-                   # 3) command to run
+                tip_frame,
+                # "get_robot_param",
+                # "joints_move"
+                # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
+                # "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
+                # "absolute_move", "world", "tf_end"
+                # "absolute_move", "world", "hello_box"
+                # "trajectory_move", file
+                # "feedback_move", "mode"
+                # "collaborative_move", "mode"
+                # "spawn_object", "box", "1", "1", "1", "0", "0", "0", "1", "1", "1", "1"
+                # "spawn_object", "cylinder", "1", "1", "1", "0", "0", "0", "1", "1", "1"
+                # "attach_object", "object", tip_frame
+                # "detach_object", "object", tip_frame
+                # "clear_object", "object"
+                # "clear_scene"
+                # "gripper_open"
+                # "gripper_close"
+                # "choose_pipeline", "OMPL", "RRTConnect"
+                # "choose_pipeline", "PILZ", "LIN"                
+                # "gcode_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"
+                # "step_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/model2.stp"
+                # "check_json_files", "default"
+                # "delete_json_sim_content", "test.json"
+                "delete_json_temp", "default"
+            ]         
     )
 
     return LaunchDescription([pick_place_demo])

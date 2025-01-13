@@ -12,7 +12,6 @@ find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(moveit_task_constructor_core REQUIRED)
 
 # Include directories
 include_directories(

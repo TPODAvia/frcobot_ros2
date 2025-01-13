@@ -9,6 +9,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 # ros2 launch moveit_task_constructor_demo demo.launch.py
+# ros2 launch fairino_mtc_demo moveit_sim.launch.py
+# ros2 launch fairino_mtc_demo mtc_builder.launch.py
 
 # hardware_type = gazebo, fake, real
 hardware_type = "fake"

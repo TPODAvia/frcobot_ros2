@@ -40,7 +40,12 @@ public:
   void newTask(const std::string& task_name);
 
   // ------------- Example "Command" Functions ---------------
-  
+  /** 
+   * @brief Prints various robot parameters, akin to Python's "get_planning_frame", "get_root_link",
+   *        "get_joint_names", etc.
+   */
+  void printRobotParams() const;
+
   // Clear the scene
   void clearScene();
 

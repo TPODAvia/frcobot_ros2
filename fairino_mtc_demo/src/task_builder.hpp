@@ -7,6 +7,7 @@
 #include <moveit/task_constructor/task.h>
 #include <moveit_msgs/msg/collision_object.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/quaternion_stamped.hpp>
 #include <moveit/task_constructor/stages/current_state.h>
 #include <moveit/task_constructor/stages/move_relative.h>
 #include <moveit/task_constructor/stages/modify_planning_scene.h>
@@ -67,12 +68,12 @@ public:
   void jointsMove(const std::vector<double>& joint_values);
 
   // Move end effector to coordinate
-  void absoluteMove(const std::string& frame_id, 
+  void absoluteMove(const std::string& frame_id, const std::string& tip_frame, const std::string& target_frame,
                      double x=0, double y=0, double z=0,
                      double rx=0, double ry=0, double rz=0, double rw=1.0);
 
   // Move manipulator with a vector (e.g., relative move)
-  void displacementMove(const std::vector<double>& move_vector);
+  void displacementMove(const std::string& world_frame, const std::string& tip_frame, const std::vector<double>& move_vector, const std::vector<double>& rotation_vector);
   
   // Move manipulator along a trajectory
   void trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory);

@@ -438,6 +438,7 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
         return;
     }
 
+    rclcpp::spin_some(node_);
     if (joint_values.size() != joint_names_.size()) {
         RCLCPP_ERROR(node_->get_logger(),
                      "jointsMove() called with %zu values, but expects %zu joints",
@@ -466,72 +467,121 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 }
 
 void TaskBuilder::absoluteMove(const std::string& frame_id, 
-                                double x, double y, double z,
-                                double rx, double ry, double rz, double rw)
+                               const std::string& tip_frame,
+                               const std::string& target_frame,
+                               double x, double y, double z,
+                               double rx, double ry, double rz, double rw)
 {
-  RCLCPP_INFO(node_->get_logger(),
-    "[absolute_move] frame_id=%s, xyz=(%.2f,%.2f,%.2f), quat=(%.2f,%.2f,%.2f,%.2f)",
-    frame_id.c_str(), x, y, z, rx, ry, rz, rw);
+  // Check if tip_frame and target_frame are specified
+  if (tip_frame != "None" && target_frame != "None") {
+    RCLCPP_INFO(node_->get_logger(),
+                "[absolute_move] Using tip_frame=%s and target_frame=%s (no pose provided).",
+                tip_frame.c_str(), target_frame.c_str());
 
-  // Define the absolute pose in "world" frame
-  geometry_msgs::msg::PoseStamped goal_pose_stamped;
-  goal_pose_stamped.header.frame_id = frame_id; // Set to "world"
-  goal_pose_stamped.header.stamp = node_->now();
-  goal_pose_stamped.pose.position.x = x;
-  goal_pose_stamped.pose.position.y = y;
-  goal_pose_stamped.pose.position.z = z;
-  goal_pose_stamped.pose.orientation.x = rx;
-  goal_pose_stamped.pose.orientation.y = ry;
-  goal_pose_stamped.pose.orientation.z = rz;
-  goal_pose_stamped.pose.orientation.w = rw;
+    // Call MoveIt logic to move based on frames only (no position/orientation)
+    auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_frames", current_solver_);
+    stage->setGroup(arm_group_name_);
+    stage->setGoal(target_frame); // Assume this method exists
+    stage->setIKFrame(frame_id);
+    task_.add(std::move(stage));
 
-  if (!current_solver_) {
-    RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choose_pipeline first.");
     return;
   }
 
-  // Create a MoveTo stage
-  auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", current_solver_);
-  stage->setGroup(arm_group_name_);
-  stage->setGoal(goal_pose_stamped); // Correct: Pass PoseStamped
-  stage->setIKFrame(tip_frame_); // Set IK frame to "world"
-  stage->setTimeout(10.0);
+  // Check if position and orientation values are valid (not "None")
+  if (x == std::numeric_limits<double>::quiet_NaN() ||
+      y == std::numeric_limits<double>::quiet_NaN() ||
+      z == std::numeric_limits<double>::quiet_NaN() ||
+      rx == std::numeric_limits<double>::quiet_NaN() ||
+      ry == std::numeric_limits<double>::quiet_NaN() ||
+      rz == std::numeric_limits<double>::quiet_NaN() ||
+      rw == std::numeric_limits<double>::quiet_NaN())
+  {
+      // If none of the above cases matched, log an error
+  RCLCPP_ERROR(node_->get_logger(),
+               "[absolute_move] Invalid arguments: either specify (tip_frame, target_frame) or (x, y, z, rx, ry, rz, rw).");
+    return;
+  }
+  
+    RCLCPP_INFO(node_->get_logger(),
+                "[absolute_move] Moving to pose (%.2f, %.2f, %.2f) with orientation (%.2f, %.2f, %.2f, %.2f) in frame_id=%s.",
+                x, y, z, rx, ry, rz, rw, frame_id.c_str());
 
-  // Optionally, set additional properties if needed
-  // stage->properties().set("description", "Moving to absolute coordinate in world frame");
+    // Define the absolute pose in the specified frame
+    geometry_msgs::msg::PoseStamped goal_pose_stamped;
+    goal_pose_stamped.header.frame_id = frame_id;
+    goal_pose_stamped.header.stamp = node_->now();
+    goal_pose_stamped.pose.position.x = x;
+    goal_pose_stamped.pose.position.y = y;
+    goal_pose_stamped.pose.position.z = z;
+    goal_pose_stamped.pose.orientation.x = rx;
+    goal_pose_stamped.pose.orientation.y = ry;
+    goal_pose_stamped.pose.orientation.z = rz;
+    goal_pose_stamped.pose.orientation.w = rw;
 
-  // Add to the task
-  task_.add(std::move(stage));
+    // Create a MoveTo stage with the specified pose
+    auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", current_solver_);
+    stage->setGroup(arm_group_name_);
+    stage->setGoal(goal_pose_stamped);
+    stage->setIKFrame(tip_frame != "None" ? tip_frame : frame_id); // Use tip_frame if specified, else frame_id
+    stage->setTimeout(10.0);
 
-  RCLCPP_INFO(node_->get_logger(), "Added MoveTo stage to move to coordinate in frame '%s'.", frame_id.c_str());
+    task_.add(std::move(stage));
+
 }
 
-void TaskBuilder::displacementMove(const std::vector<double>& move_vector)
+void TaskBuilder::displacementMove(const std::string& world_frame, 
+                                   const std::string& tip_frame,
+                                   const std::vector<double>& translation_vector,
+                                   const std::vector<double>& rotation_vector)
 {
-  RCLCPP_INFO(node_->get_logger(), "[vector_move] Moving by vector (%.2f, %.2f, %.2f)", 
-              move_vector[0], move_vector[1], move_vector[2]);
-
-  if (move_vector.size() != 3) {
-    RCLCPP_ERROR(node_->get_logger(), "displacementMove() requires exactly 3 elements (x, y, z)");
+  if (translation_vector.size() != 3 || rotation_vector.size() != 4) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "displacementMove() requires exactly 3 elements for translation (x, y, z) "
+                 "and 4 elements for rotation (rx, ry, rz, rw)");
     return;
   }
 
-  auto stage_lift = std::make_unique<mtc::stages::MoveRelative>("liftobj", cartesian_planner_);
-  stage_lift->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  stage_lift->setMinMaxDistance(0.1, 0.2);
-  stage_lift->setIKFrame(tip_frame_);
-  stage_lift->properties().set("marker_ns", "liftobj");
+  RCLCPP_INFO(node_->get_logger(), "[displacement_move] Moving by translation (%.2f, %.2f, %.2f) and rotation (%.2f, %.2f, %.2f, %.2f)", 
+              translation_vector[0], translation_vector[1], translation_vector[2],
+              rotation_vector[0], rotation_vector[1], rotation_vector[2], rotation_vector[3]);
 
-  geometry_msgs::msg::Vector3Stamped vec;
-  vec.vector.x = move_vector[0];
-  vec.vector.y = move_vector[1];
-  vec.vector.z = move_vector[2];
-  stage_lift->setDirection(vec);
-  task_.add(std::move(stage_lift));
+  // Create a MoveRelative stage for translation
+  auto stage_translate = std::make_unique<mtc::stages::MoveRelative>("translate", cartesian_planner_);
+  stage_translate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+  stage_translate->setMinMaxDistance(0.1, 0.2);
+  stage_translate->setIKFrame(tip_frame);
+  stage_translate->properties().set("marker_ns", "translate");
 
+  geometry_msgs::msg::Vector3Stamped translation;
+  translation.header.frame_id = world_frame;
+  translation.vector.x = translation_vector[0];
+  translation.vector.y = translation_vector[1];
+  translation.vector.z = translation_vector[2];
+  stage_translate->setDirection(translation);
 
-  RCLCPP_INFO(node_->get_logger(), "Performed vector move.");
+  task_.add(std::move(stage_translate));
+
+  // Create a MoveRelative stage for rotation
+  auto stage_rotate = std::make_unique<mtc::stages::MoveRelative>("rotate", cartesian_planner_);
+  stage_rotate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+  stage_rotate->setMinMaxDistance(0.1, 0.2);
+  stage_rotate->setIKFrame(tip_frame);
+  stage_rotate->properties().set("marker_ns", "rotate");
+
+  geometry_msgs::msg::QuaternionStamped rotation;
+  rotation.header.frame_id = world_frame;
+  rotation.quaternion.x = rotation_vector[0];
+  rotation.quaternion.y = rotation_vector[1];
+  rotation.quaternion.z = rotation_vector[2];
+  rotation.quaternion.w = rotation_vector[3];
+  // stage_rotate->setDirection(rotation);
+
+  // task_.add(std::move(stage_rotate));
+
+  RCLCPP_INFO(node_->get_logger(), "Performed displacement move with translation and rotation.");
 }
+
 
 void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory_poses)
 {

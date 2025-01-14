@@ -12,7 +12,7 @@ save_json = True
 reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
 reserved_3 = False # this could be for tolerance
-reserved_4 = False
+reserved_4 = False # this could be for gripper
 
 def generate_launch_description():
     # 1) Build the MoveIt configuration dictionary
@@ -47,20 +47,23 @@ def generate_launch_description():
                 # "detach_object", "cylinder", tip_frame
                 # "gripper_open"
                 # "gripper_close"
-
-                "joints_move"
+                # "joints_move"
                 # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
+
                 # "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
-                # "absolute_move", "world", "tf_end"
-                # "absolute_move", "world", "hello_box"
-                # "trajectory_move", file
-                # "feedback_move", "mode" 
-                # "collaborative_move", "mode"
+                # "absolute_move", "world", tip_frame, "wrist3_link"
+                # "absolute_move", "world", tip_frame, "cylinder"
+                # "absolute_move", "world", "0.5", "0.5"
+                "displacement_move", "world", tip_frame, "0.5", "0.5", "0.55", "0", "0", "0", "1"
                 # "choose_pipeline", "OMPL", "RRTConnect"
                 # "choose_pipeline", "PILZ", "LIN"                
                 # "check_json_files", "default"
                 # "delete_json_sim_content", "test.json"
                 # "delete_json_temp", "default"
+
+                # "trajectory_move", file
+                # "feedback_move", "mode" 
+                # "collaborative_move", "mode"
                 # "scan_line"
                 # "calibate_camera"
                 # "gcode_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"

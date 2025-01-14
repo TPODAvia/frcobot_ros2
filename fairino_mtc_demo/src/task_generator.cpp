@@ -493,6 +493,20 @@ static std::vector<geometry_msgs::msg::Pose> parseStepFile(const std::string& fi
   return result;
 }
 
+static bool isNumeric(const std::string& s)
+{
+  try {
+    /* Attempt to parse as a double */
+    std::size_t pos;
+    std::stod(s, &pos);  // may throw
+    // If pos != s.size(), there is extra non-numeric text
+    if (pos != s.size()) 
+      return false;
+    return true;
+  } catch (...) {
+    return false; 
+  }
+}
 
 int main(int argc, char** argv)
 {
@@ -639,20 +653,52 @@ int main(int argc, char** argv)
 
     case CommandKind::ABSOLUTE_MOVE:
     {
-      // absolute_move <frame_id> [x y z rx ry rz rw]
+      // absolute_move <frame_id> [tip_frame target_frame] OR <frame_id> [x y z rx ry rz rw]
       if (argc < 11) {
         RCLCPP_ERROR(node->get_logger(),
-                     "absolute_move requires at least a frame_id");
+                    "absolute_move requires at least a frame_id and either (tip_frame, target_frame) or (x, y, z, rx, ry, rz, rw)");
         rclcpp::shutdown();
         return 1;
       }
-      std::string frame_id = argv[10];
-      // If exactly 5 args => pass default
-      if (argc == 11) {
-        builder.absoluteMove(frame_id);
+
+      std::string frame_id = argv[10];  // e.g., "world" or "base_link"
+
+      // -----------------------------------------------------------------
+      // Case 1: absolute_move <frame_id> <tip_frame> <target_frame>
+      if (argc == 13) {
+        // Check if argv[11] and argv[12] are non-numeric strings
+        if (isNumeric(argv[11]) || isNumeric(argv[12])) {
+          RCLCPP_ERROR(node->get_logger(),
+                      "absolute_move: expected tip_frame and target_frame as non-numeric strings");
+          rclcpp::shutdown();
+          return 1;
+        }
+
+        std::string tip_frame = argv[11];
+        std::string target_frame = argv[12];
+
+        // Call the builder's absoluteMove with frame IDs only (no pose specified)
+        builder.absoluteMove(frame_id, tip_frame, target_frame);
       }
-      // If >= 12 => parse the pose
-      else if (argc >= 18) {
+      // -----------------------------------------------------------------
+      // Case 2: absolute_move <frame_id> [x y z rx ry rz rw]
+      else if (argc == 18) {
+        // Check if argv[11] to argv[17] are all numeric values
+        bool numeric_args = true;
+        for (int i = 11; i <= 17; ++i) {
+          if (!isNumeric(argv[i])) {
+            numeric_args = false;
+            break;
+          }
+        }
+
+        if (!numeric_args) {
+          RCLCPP_ERROR(node->get_logger(),
+                      "absolute_move: expected 7 numeric arguments for x, y, z, rx, ry, rz, rw");
+          rclcpp::shutdown();
+          return 1;
+        }
+
         double x  = std::stod(argv[11]);
         double y  = std::stod(argv[12]);
         double z  = std::stod(argv[13]);
@@ -660,34 +706,51 @@ int main(int argc, char** argv)
         double ry = std::stod(argv[15]);
         double rz = std::stod(argv[16]);
         double rw = std::stod(argv[17]);
-        builder.absoluteMove(frame_id, x, y, z, rx, ry, rz, rw);
+
+        // Call the builder's absoluteMove with the specified pose
+        builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
       }
+      // -----------------------------------------------------------------
+      // Case 3: Incorrect usage
       else {
         RCLCPP_ERROR(node->get_logger(),
-                     "Usage: absolute_move <frame_id> [x y z rx ry rz rw]");
+                    "Usage: absolute_move <frame_id> [tip_frame target_frame] OR <frame_id> [x y z rx ry rz rw]");
         rclcpp::shutdown();
         return 1;
       }
+
       break;
     }
 
-    case CommandKind::DISPLACEMENT_MOVE:
-    {
-      // displacement_move <x> <y> <z>
-      if (argc < 13) {
-        RCLCPP_ERROR(node->get_logger(),
-                     "Usage: displacement_move <x> <y> <z>");
-        rclcpp::shutdown();
-        return 1;
-      }
-      std::vector<double> move_vector;
-      for (int i = 10; i < 13; ++i) {
-        move_vector.push_back(std::stod(argv[i]));
-      }
-      builder.displacementMove(move_vector);
-      break;
-    }
+case CommandKind::DISPLACEMENT_MOVE:
+{
+  // displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz> <rw>
+  if (argc != 24) {
+    RCLCPP_ERROR(node->get_logger(),
+                 "Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz> <rw>");
+    rclcpp::shutdown();
+    return 1;
+  }
 
+  std::string world_frame = argv[10];
+  std::string tip_frame = argv[11];
+  
+  // Extract translation vector (x, y, z)
+  std::vector<double> translation_vector;
+  for (int i = 12; i < 15; ++i) {
+    translation_vector.push_back(std::stod(argv[i]));
+  }
+
+  // Extract rotation (rx, ry, rz, rw)
+  std::vector<double> rotation_vector;
+  for (int i = 15; i < 19; ++i) {
+    rotation_vector.push_back(std::stod(argv[i]));
+  }
+
+  // Call the modified displacementMove method
+  builder.displacementMove(world_frame, tip_frame, translation_vector, rotation_vector);
+  break;
+}
     case CommandKind::TRAJECTORY_MOVE:
     {
       // Option 1) user calls:

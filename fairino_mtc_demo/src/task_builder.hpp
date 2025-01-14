@@ -18,6 +18,8 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/unsupported/Eigen/Splines>
 #include <yaml-cpp/yaml.h>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <unordered_map>
 
 namespace mtc = moveit::task_constructor;
 
@@ -126,6 +128,16 @@ private:
   std::string arm_group_name_;
   std::string tip_frame_;
 
+  // We'll store the latest joint positions from /joint_states in here:
+  std::vector<std::string> joint_names_;
+  std::unordered_map<std::string, double> current_joint_positions_;
+  
+  // The subscriber to /joint_states
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+
+  // The callback that updates current_joint_positions_
+  void jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
+  
   /**
    * @brief Generates a spline-interpolated trajectory from joint waypoints.
    * 

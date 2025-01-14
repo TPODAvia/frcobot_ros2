@@ -1,5 +1,6 @@
 #include "task_builder.hpp"
 #include <moveit/task_constructor/stages/move_to.h>
+#include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <fstream> // For file I/O
@@ -37,6 +38,32 @@ TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
   else {
     RCLCPP_WARN(node_->get_logger(), "Failed to load solver configuration. Using default solver.");
   }
+  
+  // Use Reliable QoS profile
+  rclcpp::QoS qos_profile = rclcpp::QoS(2).reliable();
+  joint_state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
+      "/joint_states",  // or another topic if applicable
+      qos_profile, 
+      std::bind(&TaskBuilder::jointStateCallback, this, std::placeholders::_1));
+
+}
+
+void TaskBuilder::jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
+{
+    if (joint_names_.empty() && !msg->name.empty()) {
+        joint_names_ = msg->name;  // Store joint names from the first message
+        // RCLCPP_INFO(node_->get_logger(), "Received joint names:");
+        // for (const auto& name : joint_names_) {
+        //     RCLCPP_INFO(node_->get_logger(), "  %s", name.c_str());
+        // }
+    }
+
+    // Store joint positions in the map
+    for (size_t i = 0; i < msg->name.size(); ++i) {
+        if (i < msg->position.size()) {
+            current_joint_positions_[msg->name[i]] = msg->position[i];
+        }
+    }
 }
 
 void TaskBuilder::newTask(const std::string& task_name)
@@ -120,118 +147,80 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
 
 void TaskBuilder::printRobotParams() const
 {
-  // The MTC task stores the RobotModel internally once you call `task_.loadRobotModel(...)`
-  // or once you call `task_.init()`. So let's fetch it:
   auto robot_model = task_.getRobotModel();
-  if (!robot_model)
-  {
+  if (!robot_model) {
     RCLCPP_WARN(node_->get_logger(),
-                "No robot model is currently loaded in the MTC Task. "
-                "Please call initTask() before trying to query robot parameters.");
+                "No robot model is currently loaded. "
+                "Please call initTask() before querying robot parameters.");
     return;
   }
 
-  // ----------------------------------------------------------------------------
-  // get_planning_frame is basically the top-level frame in which the robot is defined
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_planning_frame:");
-  RCLCPP_INFO(node_->get_logger(), "  %s", robot_model->getModelFrame().c_str());
+  RCLCPP_INFO(node_->get_logger(), "Planning frame: %s", robot_model->getModelFrame().c_str());
 
-  // ----------------------------------------------------------------------------
-  // get_root_link: The name of the root link in the URDF tree
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_root_link:");
-  RCLCPP_INFO(node_->get_logger(), "  %s", robot_model->getRootLinkName().c_str());
+  RCLCPP_INFO(node_->get_logger(), "Root link: %s", robot_model->getRootLinkName().c_str());
 
-  // ----------------------------------------------------------------------------
-  // get_active_joint_names: typically for the "arm" group, if specified
-  // ----------------------------------------------------------------------------
   const moveit::core::JointModelGroup* jmg =
       robot_model->getJointModelGroup(arm_group_name_);
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_active_joint_names (Group: %s):",
-              arm_group_name_.c_str());
-  if (!jmg)
-  {
-    RCLCPP_WARN(node_->get_logger(),
-                "No JointModelGroup found for group name '%s'. "
-                "Check your MoveIt configuration.",
-                arm_group_name_.c_str());
-  }
-  else
-  {
+  RCLCPP_INFO(node_->get_logger(), "Active joints in group '%s':", arm_group_name_.c_str());
+  if (jmg) {
     for (const auto& aj : jmg->getActiveJointModelNames())
       RCLCPP_INFO(node_->get_logger(), "  %s", aj.c_str());
+  } else {
+    RCLCPP_WARN(node_->get_logger(),
+                "JointModelGroup '%s' not found. Check MoveIt config.",
+                arm_group_name_.c_str());
   }
 
-  // ----------------------------------------------------------------------------
-  // get_joint_names: all joints in the entire robot model
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_joint_names (entire robot):");
+  RCLCPP_INFO(node_->get_logger(), "All joint names in the robot:");
   for (const auto& joint_name : robot_model->getJointModelNames())
     RCLCPP_INFO(node_->get_logger(), "  %s", joint_name.c_str());
 
-  // ----------------------------------------------------------------------------
-  // get_link_names: all links in the entire robot model
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_link_names (entire robot):");
+  RCLCPP_INFO(node_->get_logger(), "All link names in the robot:");
   for (const auto& link_name : robot_model->getLinkModelNames())
     RCLCPP_INFO(node_->get_logger(), "  %s", link_name.c_str());
 
-  // ----------------------------------------------------------------------------
-  // get_group_names: all JointModelGroups defined in the SRDF
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_group_names:");
+  RCLCPP_INFO(node_->get_logger(), "Defined groups in SRDF:");
   for (const auto& group_name : robot_model->getJointModelGroupNames())
     RCLCPP_INFO(node_->get_logger(), "  %s", group_name.c_str());
 
-  // ----------------------------------------------------------------------------
-  // get_robot_markers: not directly available as a single API call in C++,
-  // but typically you would publish a MarkerArray or similar. 
-  // We'll just note that it doesn't have a 1:1 equivalent in the C++ API.
-  // In Python’s MoveIt Commander, get_robot_markers() can return a displayable set of markers for RViz. 
-  // In C++, there isn’t a single built-in method on the RobotModel or RobotState that returns a full marker 
-  // array. Typically, you’d use rviz_visual_tools or the moveit_visual_tools library to publish a marker array. 
-  // If you need that functionality, you’d do something like:
-
-  // #include <moveit_visual_tools/moveit_visual_tools.h>
-
-  // moveit_visual_tools::MoveItVisualTools visual_tools("world");
-  // visual_tools.loadRobotStatePub("/display_robot_state");
-  // visual_tools.loadMarkerPub();
-
-  // visual_tools.publishRobotState(robot_state, rviz_visual_tools::DEFAULT);
-  // visual_tools.trigger();
-  // ----------------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
   RCLCPP_INFO(node_->get_logger(),
-              "get_robot_markers: (no direct equivalent in MoveIt C++ API).");
+              "Robot markers: (no direct single call in MoveIt C++).");
 
-  // ----------------------------------------------------------------------------
-  // get_current_state: typically from the PlanningScene or from the "current state" stage.
-  // If you want the raw MTC "current state" stage, you can introspect the Task's stages.
-  // Here, we'll just build a RobotState with default values as a demonstration.
-  // ----------------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // Wait for joint states if they haven’t been received yet
+  // ------------------------------------------------------------------
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_current_state:");
-  {
-    moveit::core::RobotState default_state(robot_model);
-    default_state.setToDefaultValues();  // e.g. "home" or zero angles
-    // Print out each joint variable
-    const auto& var_names = default_state.getVariableNames();
-    const auto& var_values = default_state.getVariablePositions();
-    for (std::size_t i = 0; i < var_names.size(); ++i)
-    {
-      RCLCPP_INFO(node_->get_logger(), "  %s: %f", var_names[i].c_str(), var_values[i]);
+  RCLCPP_INFO(node_->get_logger(), "Live Joint Positions (from /joint_states subscriber):");
+
+  constexpr int max_retries = 5;
+  constexpr int sleep_ms = 500;
+  for (int attempt = 0; attempt < max_retries && current_joint_positions_.empty(); ++attempt) {
+    rclcpp::spin_some(node_);  // <-- Let ROS process any incoming /joint_states messages
+    if (current_joint_positions_.empty()) {
+      RCLCPP_WARN(node_->get_logger(), "No joint states received yet. Retrying...");
+      rclcpp::sleep_for(std::chrono::milliseconds(sleep_ms));
     }
   }
+  if (current_joint_positions_.empty()) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Failed to receive joint states after %d retries. "
+                 "Check if the robot driver is publishing on /joint_states.",
+                 max_retries);
+    return;
+  }
 
+  for (const auto& kv : current_joint_positions_) {
+    RCLCPP_INFO(node_->get_logger(), "  %s: %f", kv.first.c_str(), kv.second);
+  }
 }
+
 
 void TaskBuilder::clearScene()
 {
@@ -425,37 +414,55 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::st
 
 void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 {
-  // Example for a 6-joint robot; adapt to your robot’s actual joint names/count:
-  static const std::vector<std::string> JOINT_NAMES = {
-    "j1", "j2", "j3", "j4", "j5", "j6"
-  };
+    if (joint_values.empty()) {
+        RCLCPP_INFO(node_->get_logger(), "Waiting for joint states...");
 
-  // Build a map<joint_name, value>
-  if (joint_values.size() != JOINT_NAMES.size()) {
-    RCLCPP_ERROR(node_->get_logger(), 
-      "jointsMove() called with %zu values, but robot expects %zu joints",
-      joint_values.size(), JOINT_NAMES.size());
-    return;
-  }
+        constexpr int max_retries = 5;  // Maximum number of retries
+        constexpr int sleep_ms = 500;   // Sleep duration in milliseconds between retries
 
-  std::map<std::string, double> joints_map;
-  for (size_t i = 0; i < JOINT_NAMES.size(); ++i) {
-    joints_map[JOINT_NAMES[i]] = joint_values[i];
-  }
+        for (int attempt = 0; attempt < max_retries; ++attempt) {
+            rclcpp::spin_some(node_);
+            if (!current_joint_positions_.empty()) {
+                RCLCPP_INFO(node_->get_logger(), "Live Joint Positions (from /joint_states subscriber):");
+                for (const auto& joint_name : joint_names_) {
+                    RCLCPP_INFO(node_->get_logger(), "  Joint %s: %f",
+                                joint_name.c_str(), current_joint_positions_[joint_name]);
+                }
+                return;
+            }
+            RCLCPP_WARN(node_->get_logger(), "No joint positions received yet from /joint_states. Retrying...");
+            rclcpp::sleep_for(std::chrono::milliseconds(sleep_ms));
+        }
 
-  if (!current_solver_) {
-    RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choose_pipeline first.");
-    return;
-  }
+        RCLCPP_ERROR(node_->get_logger(), "Failed to receive joint states after %d retries. Aborting.", max_retries);
+        return;
+    }
 
-  // Create a MoveTo stage
-  auto stage = std::make_unique<mtc::stages::MoveTo>("move to joints", current_solver_);
-  stage->setGroup(arm_group_name_);
-  stage->setGoal(joints_map);  // <-- setGoal with a map
-  stage->setTimeout(10.0);
+    if (joint_values.size() != joint_names_.size()) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "jointsMove() called with %zu values, but expects %zu joints",
+                     joint_values.size(), joint_names_.size());
+        return;
+    }
 
-  // Add to the task
-  task_.add(std::move(stage));
+    // Build a map<joint_name, double>
+    std::map<std::string, double> joints_map;
+    for (size_t i = 0; i < joint_names_.size(); ++i) {
+        joints_map[joint_names_[i]] = joint_values[i];
+    }
+
+    if (!current_solver_) {
+        RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choosePipeline() first.");
+        return;
+    }
+
+    // Create a MoveTo stage to go to the new joint values
+    auto stage = std::make_unique<mtc::stages::MoveTo>("move to joints", current_solver_);
+    stage->setGroup(arm_group_name_);
+    stage->setGoal(joints_map);
+    stage->setTimeout(10.0);
+
+    task_.add(std::move(stage));
 }
 
 void TaskBuilder::absoluteMove(const std::string& frame_id, 

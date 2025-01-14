@@ -48,7 +48,7 @@ def generate_launch_description():
                 # "gripper_open"
                 # "gripper_close"
 
-                # "joints_move"
+                "joints_move"
                 # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
                 # "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
                 # "absolute_move", "world", "tf_end"

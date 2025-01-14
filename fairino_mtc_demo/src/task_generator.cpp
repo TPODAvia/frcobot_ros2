@@ -517,9 +517,9 @@ int main(int argc, char** argv)
   // [task_generator-1]   argv[7]: --params-file
   // [task_generator-1]   argv[8]: /tmp/launch_params_i7ymn_yw
 
-  if (argc < 14) {
+  if (argc < 15) {
     RCLCPP_ERROR(node->get_logger(),
-                 "Usage: task_generator <arm_group_name> <tip_frame> <command> [optional: args...]");
+                 "Error config. Usage: task_generator <arm_group_name> <tip_frame> <command> [optional: args...]");
     rclcpp::shutdown();
     return 1;
   }
@@ -620,15 +620,18 @@ int main(int argc, char** argv)
     case CommandKind::JOINTS_MOVE:
     {
       // joints_move <j1> <j2> <j3> <j4> <j5> <j6>
-      if (argc < 16) {
+      if (argc < 15) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
         rclcpp::shutdown();
         return 1;
       }
       std::vector<double> joint_values;
-      for (int i = 10; i < 16; ++i) {
-        joint_values.push_back(std::stod(argv[i]));
+      if (argc != 15) {
+        for (int i = 10; i < 16; ++i) {
+          joint_values.push_back(std::stod(argv[i]));
+        }
+        
       }
       builder.jointsMove(joint_values);
       break;

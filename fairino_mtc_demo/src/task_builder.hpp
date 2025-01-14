@@ -53,8 +53,10 @@ public:
   void removeObject(const std::string& object_name);
 
   // Spawn an object in the scene with the given pose
-  void spawnObject(const std::string& object_name, double x, double y, double z,
-                   double rx, double ry, double rz, double rw);
+  void spawnObject(const std::string& object_name, const std::string& object_shape, 
+                  double x, double y, double z,
+                  double rx, double ry, double rz, double rw, 
+                  double da, double db, double dc);
 
   // Switch pipeline / planner
   void choosePipeline(const std::string& pipeline_name, const std::string& planner_id);

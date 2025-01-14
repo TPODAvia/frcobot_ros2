@@ -231,13 +231,6 @@ void TaskBuilder::printRobotParams() const
     }
   }
 
-  // ----------------------------------------------------------------------------
-  // get_current_variable_values: same as above, typically from RobotState
-  // or from hardware feedback if you have a real robot driver.
-  // We'll treat it as the same for demonstration.
-  // ----------------------------------------------------------------------------
-  RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(), "get_current_variable_values: (same as above)");
 }
 
 void TaskBuilder::clearScene()
@@ -281,24 +274,59 @@ void TaskBuilder::removeObject(const std::string& object_name)
 {
   RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
   moveit::planning_interface::PlanningSceneInterface psi;
+
+  // Retrieve all known collision object names in the planning scene
+  std::vector<std::string> object_ids = psi.getKnownObjectNames();
+
+  // Check if the specified object exists in the scene
+  if (std::find(object_ids.begin(), object_ids.end(), object_name) == object_ids.end()) {
+    RCLCPP_INFO(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
+    return;
+  }
+
   psi.removeCollisionObjects({object_name});
 }
 
-void TaskBuilder::spawnObject(const std::string& object_name, 
+void TaskBuilder::spawnObject(const std::string& object_name, const std::string& object_shape,
                               double x, double y, double z,
-                              double rx, double ry, double rz, double rw)
+                              double rx, double ry, double rz, double rw, 
+                              double da, double db, double dc)
 {
   RCLCPP_INFO(node_->get_logger(),
     "[spawn_object] name=%s, pos=(%.2f, %.2f, %.2f), orient=(%.2f, %.2f, %.2f, %.2f)",
-            object_name.c_str(),    x, y, z,                  rx, ry, rz, rw);
+            object_name.c_str(), x, y, z, rx, ry, rz, rw);
 
   moveit_msgs::msg::CollisionObject object;
   object.id = object_name; // Use the provided object_name
   object.header.frame_id = "world"; // Adjust as needed
-  object.primitives.resize(1);
-  object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = {0.1, 0.02}; // Example dimensions
 
+  // Set the object shape based on the object_shape argument
+  if (object_shape == "cylinder") {
+    object.primitives.resize(1);
+    object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+    object.primitives[0].dimensions = {da, db}; // da: height, db: radius
+  }
+  else if (object_shape == "box") {
+    object.primitives.resize(1);
+    object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
+    object.primitives[0].dimensions = {da, db, dc}; // da, db, dc: x, y, z dimensions
+  }
+  else if (object_shape == "sphere") {
+    object.primitives.resize(1);
+    object.primitives[0].type = shape_msgs::msg::SolidPrimitive::SPHERE;
+    object.primitives[0].dimensions = {da}; // da: radius
+  }
+  else if (object_shape == "cone") {
+    object.primitives.resize(1);
+    object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CONE;
+    object.primitives[0].dimensions = {da, db}; // da: height, db: radius
+  }
+  else {
+    RCLCPP_ERROR(node_->get_logger(), "Unsupported shape type: %s. Defaulting to cylinder.", object_shape.c_str());
+    return;
+  }
+
+  // Set the object's pose
   geometry_msgs::msg::Pose pose;
   pose.position.x = x;
   pose.position.y = y;
@@ -309,12 +337,12 @@ void TaskBuilder::spawnObject(const std::string& object_name,
   pose.orientation.w = rw;
   object.pose = pose;
 
+  // Apply the collision object to the planning scene
   moveit::planning_interface::PlanningSceneInterface psi;
   psi.applyCollisionObject(object);
 
-  RCLCPP_INFO(node_->get_logger(), "Spawned object '%s' in the scene.", object_name.c_str());
+  RCLCPP_INFO(node_->get_logger(), "Spawned object '%s' with shape '%s' in the scene.", object_name.c_str(), object_shape.c_str());
 }
-
 
 void TaskBuilder::choosePipeline(const std::string& pipeline_name, const std::string& planner_id)
 {

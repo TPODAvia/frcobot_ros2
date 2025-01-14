@@ -10,10 +10,6 @@
 #include <algorithm>  // for std::remove_if
 #include <cctype>     // for std::isspace
 #include <geometry_msgs/msg/pose.hpp>
-
-// For geometry_msgs::msg::Pose (if not already included in task_builder.hpp)
-#include <geometry_msgs/msg/pose.hpp>
-
 #include "task_builder.hpp"
 
 enum class CommandKind {
@@ -33,6 +29,7 @@ enum class CommandKind {
   ATTACH_OBJECT,
   DETACH_OBJECT,
   DELETE_JSON_SIM_CONTENT,
+  DELETE_JSON_TEMP,
   SCAN_LINE,
   CALIBRATE_CAMERA,
   GCODE_LOAD,
@@ -60,6 +57,7 @@ static CommandKind parseCommand(const std::string& cmd)
   if (cmd == "attach_object")             return CommandKind::ATTACH_OBJECT;
   if (cmd == "detach_object")             return CommandKind::DETACH_OBJECT;
   if (cmd == "delete_json_sim_content")   return CommandKind::DELETE_JSON_SIM_CONTENT;
+  if (cmd == "delete_json_temp")          return CommandKind::DELETE_JSON_TEMP;
   if (cmd == "scan_line")                 return CommandKind::SCAN_LINE;
   if (cmd == "calibrate_camera")          return CommandKind::CALIBRATE_CAMERA;
   if (cmd == "gcode_load")                return CommandKind::GCODE_LOAD;
@@ -503,12 +501,25 @@ int main(int argc, char** argv)
   options.automatically_declare_parameters_from_overrides(true);
   auto node = std::make_shared<rclcpp::Node>("task_generator_node", options);
 
-  // argv[1] => arm_group_name
-  // argv[2] => tip_frame
-  // argv[3] => command
-  if (argc < 4) {
+  std::cout << "argc: " << argc << std::endl;
+  std::cout << "argv values:" << std::endl;
+  for (int i = 0; i < argc; ++i) {
+    std::cout << "  argv[" << i << "]: " << argv[i] << std::endl;
+  }
+
+  // [task_generator-1] argc: 7
+  // [task_generator-1] argv values:
+  // [task_generator-1]   argv[0]: /home/vboxuser/colcon_ws/install/fairino_mtc_demo/lib/fairino_mtc_demo/task_generator
+  // [task_generator-1]   argv[1]: fairino10_v6_group
+  // [task_generator-1]   argv[4]: --ros-args
+  // [task_generator-1]   argv[5]: -r
+  // [task_generator-1]   argv[6]: __node:=task_generator_node
+  // [task_generator-1]   argv[7]: --params-file
+  // [task_generator-1]   argv[8]: /tmp/launch_params_i7ymn_yw
+
+  if (argc < 14) {
     RCLCPP_ERROR(node->get_logger(),
-                 "Usage: task_generator <arm_group_name> <tip_frame> <command> [args...]");
+                 "Usage: task_generator <arm_group_name> <tip_frame> <command> [optional: args...]");
     rclcpp::shutdown();
     return 1;
   }
@@ -516,7 +527,19 @@ int main(int argc, char** argv)
   // Extract arguments
   std::string arm_group_name = argv[1];
   std::string tip_frame      = argv[2];
-  std::string command_str    = argv[3];
+  bool exec_task             = argv[3];
+  bool save_json             = argv[4];
+  bool reserved_1            = argv[5];
+  bool reserved_2            = argv[6];
+  bool reserved_3            = argv[7];
+  bool reserved_4            = argv[8];
+  std::string command_str    = argv[9];
+
+  // Suppress unused variable warnings
+  (void)reserved_1;
+  (void)reserved_2;
+  (void)reserved_3;
+  (void)reserved_4;
 
   // if (!node->has_parameter("robot_description")) {
   //   RCLCPP_WARN(node->get_logger(),
@@ -526,9 +549,8 @@ int main(int argc, char** argv)
   //   RCLCPP_INFO(node->get_logger(), "Loaded robot_description: %zu characters", urdf_string.size());
   // }
 
-  // Create your MTC builder
   TaskBuilder builder(node, arm_group_name, tip_frame);
-  builder.newTask("demo_task"); // just an arbitrary label
+  builder.newTask("demo_task");
 
   // Switch on the parsed command
   switch (parseCommand(command_str))
@@ -548,61 +570,64 @@ int main(int argc, char** argv)
     case CommandKind::REMOVE_OBJECT:
     {
       // "remove_object <object_name>"
-      if (argc < 5) {
+      if (argc != 16) {
         RCLCPP_ERROR(node->get_logger(),
-                     "remove_object requires an object_name (4th argument)");
+                     "remove_object requires an object_name (remove_object <object_name>)");
         rclcpp::shutdown();
         return 1;
       }
-      builder.removeObject(argv[4]);
+      builder.removeObject(argv[10]);
       break;
     }
 
     case CommandKind::SPAWN_OBJECT:
     {
       // spawn_object object 1 1 1 0 0 0 1
-      if (argc < 11) {
+      if (argc != 26) {
         RCLCPP_ERROR(node->get_logger(),
-          "Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw>");
+          "Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
         rclcpp::shutdown();
         return 1;
       }
-      std::string obj_name = argv[4];
-      double x  = std::stod(argv[5]);
-      double y  = std::stod(argv[6]);
-      double z  = std::stod(argv[7]);
-      double rx = std::stod(argv[8]);
-      double ry = std::stod(argv[9]);
-      double rz = std::stod(argv[10]);
-      double rw = std::stod(argv[11]);
-      builder.spawnObject(obj_name, x, y, z, rx, ry, rz, rw);
+      std::string obj_name = argv[10];
+      double x  = std::stod(argv[11]);
+      double y  = std::stod(argv[12]);
+      double z  = std::stod(argv[13]);
+      double rx = std::stod(argv[14]);
+      double ry = std::stod(argv[15]);
+      double rz = std::stod(argv[16]);
+      double rw = std::stod(argv[17]);
+      double da = std::stod(argv[18]);
+      double db = std::stod(argv[19]);
+      double dc = std::stod(argv[20]);
+      builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
       break;
     }
 
     case CommandKind::CHOOSE_PIPELINE:
     {
       // choose_pipeline <pipeline_name> <planner_id>
-      if (argc < 6) {
+      if (argc < 14) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: choose_pipeline <pipeline_name> <planner_id>");
         rclcpp::shutdown();
         return 1;
       }
-      builder.choosePipeline(argv[4], argv[5]);
+      builder.choosePipeline(argv[10], argv[11]);
       break;
     }
 
     case CommandKind::JOINTS_MOVE:
     {
       // joints_move <j1> <j2> <j3> <j4> <j5> <j6>
-      if (argc < 10) {
+      if (argc < 16) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
         rclcpp::shutdown();
         return 1;
       }
       std::vector<double> joint_values;
-      for (int i = 4; i < 10; ++i) {
+      for (int i = 10; i < 16; ++i) {
         joint_values.push_back(std::stod(argv[i]));
       }
       builder.jointsMove(joint_values);
@@ -612,26 +637,26 @@ int main(int argc, char** argv)
     case CommandKind::ABSOLUTE_MOVE:
     {
       // absolute_move <frame_id> [x y z rx ry rz rw]
-      if (argc < 5) {
+      if (argc < 11) {
         RCLCPP_ERROR(node->get_logger(),
                      "absolute_move requires at least a frame_id");
         rclcpp::shutdown();
         return 1;
       }
-      std::string frame_id = argv[4];
+      std::string frame_id = argv[10];
       // If exactly 5 args => pass default
-      if (argc == 5) {
+      if (argc == 11) {
         builder.absoluteMove(frame_id);
       }
       // If >= 12 => parse the pose
-      else if (argc >= 12) {
-        double x  = std::stod(argv[5]);
-        double y  = std::stod(argv[6]);
-        double z  = std::stod(argv[7]);
-        double rx = std::stod(argv[8]);
-        double ry = std::stod(argv[9]);
-        double rz = std::stod(argv[10]);
-        double rw = std::stod(argv[11]);
+      else if (argc >= 18) {
+        double x  = std::stod(argv[11]);
+        double y  = std::stod(argv[12]);
+        double z  = std::stod(argv[13]);
+        double rx = std::stod(argv[14]);
+        double ry = std::stod(argv[15]);
+        double rz = std::stod(argv[16]);
+        double rw = std::stod(argv[17]);
         builder.absoluteMove(frame_id, x, y, z, rx, ry, rz, rw);
       }
       else {
@@ -646,14 +671,14 @@ int main(int argc, char** argv)
     case CommandKind::DISPLACEMENT_MOVE:
     {
       // displacement_move <x> <y> <z>
-      if (argc < 7) {
+      if (argc < 13) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: displacement_move <x> <y> <z>");
         rclcpp::shutdown();
         return 1;
       }
       std::vector<double> move_vector;
-      for (int i = 4; i < 7; ++i) {
+      for (int i = 10; i < 13; ++i) {
         move_vector.push_back(std::stod(argv[i]));
       }
       builder.displacementMove(move_vector);
@@ -670,10 +695,10 @@ int main(int argc, char** argv)
       //
       // Decide which parsing approach to use
       bool use_velocities = false;
-      int start_index = 4; 
-      if (std::string(argv[4]) == "--use-vel") {
+      int start_index = 10; 
+      if (std::string(argv[10]) == "--use-vel") {
         use_velocities = true;
-        start_index = 5;
+        start_index = 11;
       }
 
       if (!use_velocities)
@@ -771,33 +796,33 @@ int main(int argc, char** argv)
     case CommandKind::ATTACH_OBJECT:
     {
       // attach_object <object_name> <link_name>
-      if (argc < 6) {
+      if (argc != 17) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: attach_object <object_name> <link_name>");
         rclcpp::shutdown();
         return 1;
       }
-      builder.attachObject(argv[4], argv[5]);
+      builder.attachObject(argv[10], argv[11]);
       break;
     }
 
     case CommandKind::DETACH_OBJECT:
     {
       // detach_object <object_name> <link_name>
-      if (argc < 6) {
+      if (argc != 17) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: detach_object <object_name> <link_name>");
         rclcpp::shutdown();
         return 1;
       }
-      builder.detachObject(argv[4], argv[5]);
+      builder.detachObject(argv[10], argv[11]);
       break;
     }
 
     case CommandKind::DELETE_JSON_SIM_CONTENT:
     {
       // delete_json_sim_content <filename>
-      if (argc < 5) {
+      if (argc < 11) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: delete_json_sim_content <filename>");
         rclcpp::shutdown();
@@ -985,10 +1010,13 @@ int main(int argc, char** argv)
     rclcpp::shutdown();
     return 1;
   }
-  if (!builder.executeTask()) {
+  if (!builder.executeTask() && exec_task) {
     RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
     rclcpp::shutdown();
     return 1;
+  }
+  if (save_json) {
+    RCLCPP_INFO(node->get_logger(), "Saving to JSON file!");
   }
 
   RCLCPP_INFO(node->get_logger(), "Task complete!");

@@ -32,3 +32,4 @@ rosdep update
 rosdep install --from-paths src --ignore-src -r -y
 export MAKEFLAGS="-j2"
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+export RCUTILS_COLORIZED_OUTPUT=1

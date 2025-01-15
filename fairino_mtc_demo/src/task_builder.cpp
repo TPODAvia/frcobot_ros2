@@ -535,52 +535,76 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
                                    const std::vector<double>& translation_vector,
                                    const std::vector<double>& rotation_vector)
 {
-  if (translation_vector.size() != 3 || rotation_vector.size() != 4) {
+  if (translation_vector.size() != 3 || rotation_vector.size() != 3) {
     RCLCPP_ERROR(node_->get_logger(),
                  "displacementMove() requires exactly 3 elements for translation (x, y, z) "
-                 "and 4 elements for rotation (rx, ry, rz, rw)");
+                 "and 3 elements for rotation (rx, ry, rz)");
     return;
   }
 
-  RCLCPP_INFO(node_->get_logger(), "[displacement_move] Moving by translation (%.2f, %.2f, %.2f) and rotation (%.2f, %.2f, %.2f, %.2f)", 
-              translation_vector[0], translation_vector[1], translation_vector[2],
-              rotation_vector[0], rotation_vector[1], rotation_vector[2], rotation_vector[3]);
+  // Check if all elements in translation_vector are zero
+  bool is_translation_zero = (translation_vector[0] == 0.0 && 
+                              translation_vector[1] == 0.0 && 
+                              translation_vector[2] == 0.0);
 
-  // Create a MoveRelative stage for translation
-  auto stage_translate = std::make_unique<mtc::stages::MoveRelative>("translate", cartesian_planner_);
-  stage_translate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  stage_translate->setMinMaxDistance(0.1, 0.2);
-  stage_translate->setIKFrame(tip_frame);
-  stage_translate->properties().set("marker_ns", "translate");
+  // Check if all elements in rotation_vector are zero
+  bool is_rotation_zero = (rotation_vector[0] == 0.0 && 
+                           rotation_vector[1] == 0.0 && 
+                           rotation_vector[2] == 0.0);
 
-  geometry_msgs::msg::Vector3Stamped translation;
-  translation.header.frame_id = world_frame;
-  translation.vector.x = translation_vector[0];
-  translation.vector.y = translation_vector[1];
-  translation.vector.z = translation_vector[2];
-  stage_translate->setDirection(translation);
+  if (is_translation_zero && is_rotation_zero) {
+    RCLCPP_WARN(node_->get_logger(), 
+                "Both translation and rotation vectors are zero. No displacement move will be performed.");
+    return;
+  }
 
-  task_.add(std::move(stage_translate));
+  if (!is_translation_zero) {
+    RCLCPP_INFO(node_->get_logger(), 
+                "[displacement_move] Moving by translation (%.2f, %.2f, %.2f)", 
+                translation_vector[0], translation_vector[1], translation_vector[2]);
 
-  // Create a MoveRelative stage for rotation
-  auto stage_rotate = std::make_unique<mtc::stages::MoveRelative>("rotate", cartesian_planner_);
-  stage_rotate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  stage_rotate->setMinMaxDistance(0.1, 0.2);
-  stage_rotate->setIKFrame(tip_frame);
-  stage_rotate->properties().set("marker_ns", "rotate");
+    // Create a MoveRelative stage for translation
+    auto stage_translate = std::make_unique<mtc::stages::MoveRelative>("translate", cartesian_planner_);
+    stage_translate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+    stage_translate->setMinMaxDistance(0.1, 0.2);
+    stage_translate->setIKFrame(tip_frame);
+    stage_translate->properties().set("marker_ns", "translate");
 
-  geometry_msgs::msg::QuaternionStamped rotation;
-  rotation.header.frame_id = world_frame;
-  rotation.quaternion.x = rotation_vector[0];
-  rotation.quaternion.y = rotation_vector[1];
-  rotation.quaternion.z = rotation_vector[2];
-  rotation.quaternion.w = rotation_vector[3];
-  // stage_rotate->setDirection(rotation);
+    geometry_msgs::msg::Vector3Stamped translation;
+    translation.header.frame_id = world_frame;
+    translation.vector.x = translation_vector[0];
+    translation.vector.y = translation_vector[1];
+    translation.vector.z = translation_vector[2];
+    stage_translate->setDirection(translation);
 
-  // task_.add(std::move(stage_rotate));
+    task_.add(std::move(stage_translate));
+  }
 
-  RCLCPP_INFO(node_->get_logger(), "Performed displacement move with translation and rotation.");
+  if (!is_rotation_zero) {
+    RCLCPP_INFO(node_->get_logger(), 
+                "[displacement_move] Rotating by (%.2f, %.2f, %.2f)", 
+                rotation_vector[0], rotation_vector[1], rotation_vector[2]);
+
+    // Create a MoveRelative stage for rotation
+    auto stage_rotate = std::make_unique<mtc::stages::MoveRelative>("rotate", cartesian_planner_);
+    stage_rotate->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+    stage_rotate->setMinMaxDistance(0.01, 0.2);
+    stage_rotate->setIKFrame(tip_frame);
+    stage_rotate->properties().set("marker_ns", "rotate");
+
+    geometry_msgs::msg::TwistStamped rotation;
+    rotation.header.frame_id = world_frame;
+    rotation.twist.angular.x = rotation_vector[0];
+    rotation.twist.angular.y = rotation_vector[1];
+    rotation.twist.angular.z = rotation_vector[2];
+    stage_rotate->setDirection(rotation);
+
+    task_.add(std::move(stage_rotate));
+  }
+
+  RCLCPP_INFO(node_->get_logger(), "Performed displacement move with translation and/or rotation.");
 }
+
 
 
 void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory_poses)
@@ -841,12 +865,6 @@ void TaskBuilder::gripperOpen()
 {
   RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
   // Similarly for open
-}
-
-void TaskBuilder::deleteJsonSimContent(const std::string& filename)
-{
-  RCLCPP_INFO(node_->get_logger(), "[delete_json_sim_content] file=%s", filename.c_str());
-  // Do whatever is needed to remove or reset JSON-based simulation content
 }
 
 bool TaskBuilder::initTask()

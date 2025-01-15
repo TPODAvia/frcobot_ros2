@@ -10,6 +10,8 @@
 #include <algorithm>  // for std::remove_if
 #include <cctype>     // for std::isspace
 #include <geometry_msgs/msg/pose.hpp>
+#include <filesystem>
+#include <nlohmann/json.hpp>
 #include "task_builder.hpp"
 
 enum class CommandKind {
@@ -30,6 +32,7 @@ enum class CommandKind {
   DETACH_OBJECT,
   DELETE_JSON_SIM_CONTENT,
   DELETE_JSON_TEMP,
+  CHECK_JSON_FILES,
   SCAN_LINE,
   CALIBRATE_CAMERA,
   GCODE_LOAD,
@@ -58,6 +61,7 @@ static CommandKind parseCommand(const std::string& cmd)
   if (cmd == "detach_object")             return CommandKind::DETACH_OBJECT;
   if (cmd == "delete_json_sim_content")   return CommandKind::DELETE_JSON_SIM_CONTENT;
   if (cmd == "delete_json_temp")          return CommandKind::DELETE_JSON_TEMP;
+  if (cmd == "check_json_files")          return CommandKind::CHECK_JSON_FILES;
   if (cmd == "scan_line")                 return CommandKind::SCAN_LINE;
   if (cmd == "calibrate_camera")          return CommandKind::CALIBRATE_CAMERA;
   if (cmd == "gcode_load")                return CommandKind::GCODE_LOAD;
@@ -66,6 +70,215 @@ static CommandKind parseCommand(const std::string& cmd)
   return CommandKind::UNKNOWN;
 }
 
+
+static void removeUnwantedKeys(nlohmann::json& j, const std::vector<std::string>& keys_to_remove)
+{
+  if (j.is_object()) {
+    // Erase unwanted keys from object
+    for (auto it = j.begin(); it != j.end(); ) {
+      // If the key is in the list, erase it
+      if (std::find(keys_to_remove.begin(), keys_to_remove.end(), it.key()) != keys_to_remove.end()) {
+        it = j.erase(it);
+      } else {
+        // Otherwise, recurse
+        removeUnwantedKeys(it.value(), keys_to_remove);
+        ++it;
+      }
+    }
+  } else if (j.is_array()) {
+    // Recurse for each element in the array
+    for (auto& elem : j) {
+      removeUnwantedKeys(elem, keys_to_remove);
+    }
+  }
+}
+
+/** 
+ * CommandKind::DELETE_JSON_SIM_CONTENT 
+ *
+ * Usage (example):
+ *   delete_json_sim_content <filename>
+ *
+ * Behavior:
+ *   1. Check if <filename> exists; if not, print error and return.
+ *   2. Remove "mod_<filename>" if it exists.
+ *   3. Load JSON from <filename>.
+ *   4. Remove unwanted keys: ["remove_object","detach_object","clear_scene","attach_object","spawn_object"].
+ *   5. Filter out empty objects if they become empty {} in an array context.
+ *   6. Save the cleaned JSON to "mod_<filename>".
+ *   7. Print a success message and terminate.
+ */
+static int handleDeleteJsonSimContent(const std::string& filename, rclcpp::Node::SharedPtr node)
+{
+  // 1) Check if file exists
+  if (!std::filesystem::exists(filename)) {
+    RCLCPP_ERROR(node->get_logger(), "No file found at path: %s", filename.c_str());
+    return 1;
+  }
+
+  // 2) Build the mod_ filename in the same directory
+  std::filesystem::path p(filename);
+  std::filesystem::path mod_file = p.parent_path() / ("mod_" + p.filename().string());
+
+  // If it already exists, remove it
+  if (std::filesystem::exists(mod_file)) {
+    std::filesystem::remove(mod_file);
+    RCLCPP_INFO(node->get_logger(), "Removed existing mod-file: %s", mod_file.string().c_str());
+  }
+
+  // 3) Load JSON from <filename>
+  nlohmann::json data;
+  {
+    std::ifstream fin(filename);
+    if (!fin.is_open()) {
+      RCLCPP_ERROR(node->get_logger(), "Failed to open JSON file: %s", filename.c_str());
+      return 1;
+    }
+    try {
+      fin >> data;
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(node->get_logger(), "Error parsing JSON: %s", e.what());
+      return 1;
+    }
+  }
+
+  // 4) Remove unwanted keys
+  std::vector<std::string> unwanted_keys = {
+    "remove_object", "detach_object", "clear_scene", "attach_object", "spawn_object"
+  };
+  removeUnwantedKeys(data, unwanted_keys);
+
+  // 5) Filter out empty dictionaries ({}), if JSON is an array
+  //    so we don't keep empty objects in the top-level array
+  if (data.is_array()) {
+    nlohmann::json filtered = nlohmann::json::array();
+    for (auto& item : data) {
+      // keep item if it's not an empty object
+      if (!item.is_object() || !item.empty()) {
+        filtered.push_back(item);
+      }
+    }
+    data = filtered;
+  }
+
+  // 6) Save the cleaned JSON to "mod_<filename>"
+  {
+    std::ofstream fout(mod_file);
+    if (!fout.is_open()) {
+      RCLCPP_ERROR(node->get_logger(), "Failed to open output file: %s", mod_file.string().c_str());
+      return 1;
+    }
+    fout << data.dump(2) << std::endl;
+  }
+
+  RCLCPP_INFO(node->get_logger(), "delete_json_sim_content finished.");
+  return 0;
+}
+
+/**
+ * CommandKind::CHECK_JSON_FILES
+ *
+ * Usage (example):
+ *   check_json_files <directory>
+ *
+ * Behavior:
+ *   1. List all `.json` files in <directory>.
+ *   2. Attempt to parse each as JSON.
+ *   3. Print which files are valid/invalid.
+ *   4. Advise manual checks if desired.
+ */
+static int handleCheckJsonFiles(const std::string& directory, rclcpp::Node::SharedPtr node)
+{
+  if (!std::filesystem::exists(directory) || !std::filesystem::is_directory(directory)) {
+    RCLCPP_ERROR(node->get_logger(), "Invalid directory: %s", directory.c_str());
+    return 1;
+  }
+
+  std::vector<std::string> valid_json_files;
+  std::vector<std::string> invalid_json_files;
+
+  for (auto& entry : std::filesystem::directory_iterator(directory)) {
+    if (entry.is_regular_file()) {
+      std::filesystem::path fpath = entry.path();
+      if (fpath.extension() == ".json") {
+        // Attempt to parse
+        std::ifstream fin(fpath.string());
+        if (!fin.is_open()) {
+          invalid_json_files.push_back(fpath.filename().string());
+          continue;
+        }
+        try {
+          nlohmann::json data;
+          fin >> data;  // If parse fails, it will throw
+          valid_json_files.push_back(fpath.filename().string());
+        } catch (const std::exception& e) {
+          invalid_json_files.push_back(fpath.filename().string());
+          RCLCPP_WARN(node->get_logger(),
+            "Invalid JSON in file: %s - Error: %s",
+            fpath.filename().string().c_str(),
+            e.what());
+        }
+      }
+    }
+  }
+
+  // Print summary
+  std::cout << std::string(80, '#') << "\n";
+  std::cout << "Directory: " << directory << "\n";
+  std::cout << std::string(80, '#') << "\n\n";
+
+  std::cout << "Valid JSON files:\n";
+  for (auto& f : valid_json_files) {
+    std::cout << "  " << f << "\n";
+  }
+  std::cout << "\nInvalid JSON files:\n";
+  for (auto& f : invalid_json_files) {
+    std::cout << "  " << f << "\n";
+  }
+  std::cout << std::string(80, '#') << "\n";
+  std::cout << "WARNING: This only checks JSON syntax. Further manual checks may be necessary.\n";
+  std::cout << "check_json_files finished!\n";
+
+  return 0;
+}
+
+/**
+ * CommandKind::DELETE_JSON_TEMP
+ *
+ * Usage (example):
+ *   delete_json_temp <directory>
+ *
+ * Behavior:
+ *   1. Ask for user confirmation ("y/n").
+ *   2. If "y", remove `test.json` and `mod_test.json` in <directory> if they exist.
+ *   3. Otherwise, do nothing.
+ */
+static int handleDeleteJsonTemp(const std::string& directory, rclcpp::Node::SharedPtr node)
+{
+  std::cout << "test.json and mod_test.json will be deleted in: " << directory << "\n";
+  std::cout << "Proceed? (y/n): ";
+  std::string answer;
+  std::cin >> answer;
+
+  if (answer == "y" || answer == "Y") {
+    std::filesystem::path test_file      = std::filesystem::path(directory) / "test.json";
+    std::filesystem::path mod_test_file  = std::filesystem::path(directory) / "mod_test.json";
+
+    if (std::filesystem::exists(test_file)) {
+      std::filesystem::remove(test_file);
+      RCLCPP_INFO(node->get_logger(), "Removed: %s", test_file.string().c_str());
+    }
+    if (std::filesystem::exists(mod_test_file)) {
+      std::filesystem::remove(mod_test_file);
+      RCLCPP_INFO(node->get_logger(), "Removed: %s", mod_test_file.string().c_str());
+    }
+  } else {
+    std::cout << "Deletion cancelled. Files are not deleted.\n";
+  }
+
+  RCLCPP_INFO(node->get_logger(), "delete_json_temp finished.");
+  return 0;
+}
 
 static void savePosesToFile(const std::string& filename, const std::vector<geometry_msgs::msg::Pose>& poses) {
   std::ofstream file(filename);
@@ -665,9 +878,9 @@ int main(int argc, char** argv)
 
       // -----------------------------------------------------------------
       // Case 1: absolute_move <frame_id> <tip_frame> <target_frame>
-      if (argc == 13) {
-        // Check if argv[11] and argv[12] are non-numeric strings
-        if (isNumeric(argv[11]) || isNumeric(argv[12])) {
+      if (argc == 18) {
+        // Check if argv[10] to argv[12] are non-numeric strings
+        if (isNumeric(argv[10]) || isNumeric(argv[11]) || isNumeric(argv[12])) {
           RCLCPP_ERROR(node->get_logger(),
                       "absolute_move: expected tip_frame and target_frame as non-numeric strings");
           rclcpp::shutdown();
@@ -682,7 +895,7 @@ int main(int argc, char** argv)
       }
       // -----------------------------------------------------------------
       // Case 2: absolute_move <frame_id> [x y z rx ry rz rw]
-      else if (argc == 18) {
+      else if (argc == 23) {
         // Check if argv[11] to argv[17] are all numeric values
         bool numeric_args = true;
         for (int i = 11; i <= 17; ++i) {
@@ -722,35 +935,44 @@ int main(int argc, char** argv)
       break;
     }
 
-case CommandKind::DISPLACEMENT_MOVE:
-{
-  // displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz> <rw>
-  if (argc != 24) {
-    RCLCPP_ERROR(node->get_logger(),
-                 "Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz> <rw>");
-    rclcpp::shutdown();
-    return 1;
-  }
+    case CommandKind::DISPLACEMENT_MOVE:
+    {
+      // Check if argv[10] and argv[11] are non-numeric strings
+      if (isNumeric(argv[10]) || isNumeric(argv[11])) {
+        RCLCPP_ERROR(node->get_logger(),
+                    "absolute_move: expected tip_frame and target_frame as non-numeric strings");
+        rclcpp::shutdown();
+        return 1;
+      }
+      // displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>
+      if (argc != 23) {
+        RCLCPP_ERROR(node->get_logger(),
+                    "Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>");
+        rclcpp::shutdown();
+        return 1;
+      }
 
-  std::string world_frame = argv[10];
-  std::string tip_frame = argv[11];
-  
-  // Extract translation vector (x, y, z)
-  std::vector<double> translation_vector;
-  for (int i = 12; i < 15; ++i) {
-    translation_vector.push_back(std::stod(argv[i]));
-  }
 
-  // Extract rotation (rx, ry, rz, rw)
-  std::vector<double> rotation_vector;
-  for (int i = 15; i < 19; ++i) {
-    rotation_vector.push_back(std::stod(argv[i]));
-  }
+      std::string world_frame = argv[10];
+      std::string tip_frame = argv[11];
+      
+      // Extract translation vector (x, y, z)
+      std::vector<double> translation_vector;
+      for (int i = 12; i < 15; ++i) {
+        translation_vector.push_back(std::stod(argv[i]));
+      }
 
-  // Call the modified displacementMove method
-  builder.displacementMove(world_frame, tip_frame, translation_vector, rotation_vector);
-  break;
-}
+      // Extract rotation (rx, ry, rz, rw)
+      std::vector<double> rotation_vector;
+      for (int i = 15; i < 18; ++i) {
+        rotation_vector.push_back(std::stod(argv[i]));
+      }
+
+      // Call the modified displacementMove method
+      builder.displacementMove(world_frame, tip_frame, translation_vector, rotation_vector);
+      break;
+    }
+
     case CommandKind::TRAJECTORY_MOVE:
     {
       // Option 1) user calls:
@@ -888,14 +1110,49 @@ case CommandKind::DISPLACEMENT_MOVE:
     case CommandKind::DELETE_JSON_SIM_CONTENT:
     {
       // delete_json_sim_content <filename>
-      if (argc < 11) {
+      if (argc != 16) {
         RCLCPP_ERROR(node->get_logger(),
-                     "Usage: delete_json_sim_content <filename>");
+                    "Usage: delete_json_sim_content <filename>");
         rclcpp::shutdown();
         return 1;
       }
-      builder.deleteJsonSimContent(argv[4]);
-      break;
+
+      std::string filename = argv[10];
+      int rc = handleDeleteJsonSimContent(filename, node);
+      rclcpp::shutdown();
+      return rc;
+    }
+
+    case CommandKind::CHECK_JSON_FILES:
+    {
+      // check_json_files <directory>
+      if (argc != 16) {
+        RCLCPP_ERROR(node->get_logger(),
+                    "Usage: check_json_files <directory>");
+        rclcpp::shutdown();
+        return 1;
+      }
+
+      std::string directory = argv[10];
+      int rc = handleCheckJsonFiles(directory, node);
+      rclcpp::shutdown();
+      return rc;
+    }
+
+    case CommandKind::DELETE_JSON_TEMP:
+    {
+      // delete_json_temp <directory>
+      if (argc != 16) {
+        RCLCPP_ERROR(node->get_logger(),
+                    "Usage: delete_json_temp <directory>");
+        rclcpp::shutdown();
+        return 1;
+      }
+
+      std::string directory = argv[10];
+      int rc = handleDeleteJsonTemp(directory, node);
+      rclcpp::shutdown();
+      return rc;
     }
 
     case CommandKind::SCAN_LINE:

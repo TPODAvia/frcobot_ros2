@@ -49,16 +49,17 @@ def generate_launch_description():
                 # "gripper_close"
                 # "joints_move"
                 # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
+                # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0","0", "1.1"
 
-                # "absolute_move", "world", "0.5", "0.5", "0.55", "0", "0", "0", "1"
+                # "absolute_move", "world", "0.5", "0.1", "0.5", "0", "0", "0", "1"
                 # "absolute_move", "world", tip_frame, "wrist3_link"
                 # "absolute_move", "world", tip_frame, "cylinder"
                 # "absolute_move", "world", "0.5", "0.5"
-                "displacement_move", "world", tip_frame, "0.5", "0.5", "0.55", "0", "0", "0", "1"
+
                 # "choose_pipeline", "OMPL", "RRTConnect"
                 # "choose_pipeline", "PILZ", "LIN"                
                 # "check_json_files", "default"
-                # "delete_json_sim_content", "test.json"
+                "delete_json_sim_content", "test.json"
                 # "delete_json_temp", "default"
 
                 # "trajectory_move", file

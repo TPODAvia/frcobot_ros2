@@ -95,9 +95,6 @@ public:
   // Gripper open
   void gripperOpen();
 
-  // Delete or clear some JSON simulation content
-  void deleteJsonSimContent(const std::string& filename);
-
   // ------------- Build & Execute the MTC Task --------------
   
   // Initializes the underlying MTC Task

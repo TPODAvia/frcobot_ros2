@@ -9,6 +9,7 @@
 #include <map>
 #include <algorithm>  // for std::remove_if
 #include <cctype>     // for std::isspace
+#include <limits>
 #include <geometry_msgs/msg/pose.hpp>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -849,24 +850,29 @@ int main(int argc, char** argv)
 
     case CommandKind::SPAWN_OBJECT:
     {
-      // spawn_object object 1 1 1 0 0 0 1
-      if (argc != 26) {
+      // Check the number of arguments
+      if (argc != 16 && argc != 26) {
         RCLCPP_ERROR(node->get_logger(),
           "Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
         rclcpp::shutdown();
         return 1;
       }
+
       std::string obj_name = argv[10];
-      double x  = std::stod(argv[11]);
-      double y  = std::stod(argv[12]);
-      double z  = std::stod(argv[13]);
-      double rx = std::stod(argv[14]);
-      double ry = std::stod(argv[15]);
-      double rz = std::stod(argv[16]);
-      double rw = std::stod(argv[17]);
-      double da = std::stod(argv[18]);
-      double db = std::stod(argv[19]);
-      double dc = std::stod(argv[20]);
+      
+      // If arguments are incomplete, use NaN as placeholders
+      double x = (argc == 26) ? std::stod(argv[11]) : std::numeric_limits<double>::quiet_NaN();
+      double y = (argc == 26) ? std::stod(argv[12]) : std::numeric_limits<double>::quiet_NaN();
+      double z = (argc == 26) ? std::stod(argv[13]) : std::numeric_limits<double>::quiet_NaN();
+      double rx = (argc == 26) ? std::stod(argv[14]) : std::numeric_limits<double>::quiet_NaN();
+      double ry = (argc == 26) ? std::stod(argv[15]) : std::numeric_limits<double>::quiet_NaN();
+      double rz = (argc == 26) ? std::stod(argv[16]) : std::numeric_limits<double>::quiet_NaN();
+      double rw = (argc == 26) ? std::stod(argv[17]) : std::numeric_limits<double>::quiet_NaN();
+      double da = (argc == 26) ? std::stod(argv[18]) : std::numeric_limits<double>::quiet_NaN();
+      double db = (argc == 26) ? std::stod(argv[19]) : std::numeric_limits<double>::quiet_NaN();
+      double dc = (argc == 26) ? std::stod(argv[20]) : std::numeric_limits<double>::quiet_NaN();
+
+      // Call the spawnObject function
       builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
       break;
     }
@@ -889,7 +895,7 @@ int main(int argc, char** argv)
         return 1;
       }
 
-      builder.choosePipeline(argv[10], argv[11], 1,1,1,1,1,1);
+      builder.savePipelineConfig(argv[10], argv[11], 0, 0);
       break;
     }
 

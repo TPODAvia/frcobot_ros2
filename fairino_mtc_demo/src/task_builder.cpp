@@ -101,55 +101,101 @@ void TaskBuilder::newTask(const std::string& task_name)
   task_.add(std::move(current_state_stage));
 }
 
-void TaskBuilder::saveSolverConfig(const std::string& file_path)
+void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
+                                     const std::string& planner_id,
+                                     double max_vel_factor,
+                                     double max_acc_factor)
 {
-  YAML::Node config;
-  
-  // Determine which pipeline is currently selected by looking up the pointer in solvers_
-  std::string current_solver_name = "unknown";
 
-  // For advanced usage: if you want to store separate velocity/accel for each solver type,
-  // you can keep them in your class members. For demonstration, we only store the pipeline name.
-  for (const auto& [name, solver_ptr] : solvers_) {
-    if (solver_ptr == current_solver_) {
-      current_solver_name = name;
-      break;
+  std::string package_share_directory;
+  try {
+    package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Failed to get package share directory for 'fairino_mtc_demo': %s",
+                 e.what());
+    return;
+  }
+
+  const std::string memory_dir = package_share_directory + "/memory/";
+  if (!fs::exists(memory_dir)) {
+    try {
+      fs::create_directories(memory_dir);
+      RCLCPP_INFO(node_->get_logger(), "Created memory directory at %s", memory_dir.c_str());
+    } catch (const fs::filesystem_error& e) {
+      RCLCPP_ERROR(node_->get_logger(),
+                   "Failed to create memory directory: %s",
+                   e.what());
+      return;
     }
   }
 
-  // Example approach:
-  // If the pipeline is Pilz, store multiple keys
-  // If the pipeline is OMPL, store different keys
-  // For simplicity, let’s detect “pilz_” in the name and decide accordingly.
-  if (current_solver_name.find("pilz_") != std::string::npos) {
-    // Suppose we have hard-coded values or we read them from the solver
-    config["pipeline_name"] = "pilz_industrial_motion_planner";
-    // Hard-coded from your choosePipeline logic:
-    config["max_velocity_scaling_factor_ptp"]  = 0.5;
-    config["max_acceleration_scaling_factor_ptp"] = 0.5;
-    config["max_velocity_scaling_factor_lin"]  = 0.2;
-    config["max_acceleration_scaling_factor_lin"] = 0.2;
-    config["max_velocity_scaling_factor_circ"] = 0.3;
-    config["max_acceleration_scaling_factor_circ"] = 0.3;
-  } 
-  else if (current_solver_name.find("ompl_") != std::string::npos) {
-    config["pipeline_name"] = "ompl";
-    config["max_velocity_scaling_factor"]     = 0.8;
-    config["max_acceleration_scaling_factor"] = 0.8;
+  YAML::Node config;
+  config["pipeline_name"] = pipeline_name;
+  config["planner_id"] = planner_id;
+  // Use the factors provided by the function parameters as a baseline
+  config["max_velocity_scaling_factor"] = max_vel_factor;
+  config["max_acceleration_scaling_factor"] = max_acc_factor;
+
+  if (pipeline_name == "pilz_industrial_motion_planner")
+  {
+    if (planner_id == "PTP")
+    {
+      config["max_velocity_scaling_factor"] = 0.5;
+      config["max_acceleration_scaling_factor"] = 0.5;
+    }
+    else if (planner_id == "LIN")
+    {
+      config["max_velocity_scaling_factor"] = 0.2;
+      config["max_acceleration_scaling_factor"] = 0.2;
+    }
+    else
+    {
+      config["planner_id"] = "unknown";
+    }
   }
-  else {
-    // fallback
+  else if (pipeline_name == "ompl")
+  {
+    if (planner_id == "RRTConnect")
+    {
+      config["max_velocity_scaling_factor"] = 0.7;
+      config["max_acceleration_scaling_factor"] = 0.7;
+    }
+    else if (planner_id == "PRM")
+    {
+      config["max_velocity_scaling_factor"] = 0.8;
+      config["max_acceleration_scaling_factor"] = 0.8;
+    }
+    else
+    {
+      config["planner_id"] = "unknown";
+    }
+  }
+  else
+  {
     config["pipeline_name"] = "unknown";
   }
 
+  if (config["pipeline_name"].as<std::string>() == "unknown" ||
+      config["planner_id"].as<std::string>() == "unknown")
+  {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Failed to save solver configuration: pipeline_name or planner_id is unknown");
+    return;
+  }
+
+  const std::string file_path = memory_dir + "current_solver_config.yaml";
   try {
     std::ofstream fout(file_path);
     fout << config;
     fout.close();
-    RCLCPP_INFO(node_->get_logger(), "Saved solver configuration to %s", file_path.c_str());
-  }
-  catch (const std::exception& e) {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to save solver configuration: %s", e.what());
+    RCLCPP_INFO(node_->get_logger(),
+                "Saved solver configuration to %s",
+                file_path.c_str());
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(node_->get_logger(),
+                 "Failed to save solver configuration: %s",
+                 e.what());
   }
 }
 
@@ -170,39 +216,21 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
     std::string pipeline_name = config["pipeline_name"].as<std::string>();
     RCLCPP_INFO(node_->get_logger(), "Loaded solver configuration: pipeline=%s", pipeline_name.c_str());
 
-    // Extract relevant parameters
-    // If Pilz:
-    double v_ptp = 0.5, a_ptp = 0.5;
-    double v_lin = 0.2, a_lin = 0.2;
-    double v_circ = 0.3, a_circ = 0.3;
-    // If OMPL:
-    double ompl_v = 0.8, ompl_a = 0.8;
-
-    if (pipeline_name == "pilz_industrial_motion_planner") {
-      if (config["max_velocity_scaling_factor_ptp"])
-        v_ptp = config["max_velocity_scaling_factor_ptp"].as<double>();
-      if (config["max_acceleration_scaling_factor_ptp"])
-        a_ptp = config["max_acceleration_scaling_factor_ptp"].as<double>();
-      if (config["max_velocity_scaling_factor_lin"])
-        v_lin = config["max_velocity_scaling_factor_lin"].as<double>();
-      if (config["max_acceleration_scaling_factor_lin"])
-        a_lin = config["max_acceleration_scaling_factor_lin"].as<double>();
-      if (config["max_velocity_scaling_factor_circ"])
-        v_circ = config["max_velocity_scaling_factor_circ"].as<double>();
-      if (config["max_acceleration_scaling_factor_circ"])
-        a_circ = config["max_acceleration_scaling_factor_circ"].as<double>();
-
-      // Re-initialize solvers with the loaded values
-      choosePipeline(pipeline_name, "", v_ptp, a_ptp, v_lin, a_lin, v_circ, a_circ);
+    if (!config["planner_id"]) {
+      RCLCPP_WARN(node_->get_logger(), "Missing 'pipeline_name' in config YAML.");
+      return false;
     }
-    else if (pipeline_name == "ompl") {
-      if (config["max_velocity_scaling_factor"])
-        ompl_v = config["max_velocity_scaling_factor"].as<double>();
-      if (config["max_acceleration_scaling_factor"])
-        ompl_a = config["max_acceleration_scaling_factor"].as<double>();
 
-      // Re-initialize solvers with the loaded values
-      choosePipeline(pipeline_name, "", ompl_v, ompl_a, ompl_v, ompl_a, ompl_v, ompl_a);
+    std::string planner_id = config["planner_id"].as<std::string>();
+    RCLCPP_INFO(node_->get_logger(), "Loaded solver configuration: planner_id=%s", planner_id.c_str());
+
+    double vel_scale = 0.0, acc_scale = 0.0;
+
+    if (pipeline_name == "pilz_industrial_motion_planner" || pipeline_name == "ompl") {
+        vel_scale = config["max_velocity_scaling_factor"].as<double>();
+        acc_scale = config["max_acceleration_scaling_factor"].as<double>();
+
+      choosePipeline(pipeline_name, planner_id, vel_scale, acc_scale);
     }
     else {
       RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name in config: %s", pipeline_name.c_str());
@@ -219,12 +247,8 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
 
 void TaskBuilder::choosePipeline(const std::string& pipeline_name,
                                  const std::string& planner_id,
-                                 double max_vel_factor_ptp_or_ompl,
-                                 double max_acc_factor_ptp_or_ompl,
-                                 double max_vel_factor_lin,
-                                 double max_acc_factor_lin,
-                                 double max_vel_factor_circ,
-                                 double max_acc_factor_circ)
+                                 double max_vel_factor,
+                                 double max_acc_factor)
 {
   // Clear existing solvers
   solvers_.clear();
@@ -237,22 +261,22 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     // Initialize Pilz PTP Planner
     auto pilz_ptp_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
     pilz_ptp_planner->setPlannerId(planner_id.empty() ? "PTP" : planner_id);
-    pilz_ptp_planner->setProperty("max_velocity_scaling_factor", max_vel_factor_ptp_or_ompl);
-    pilz_ptp_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor_ptp_or_ompl);
+    pilz_ptp_planner->setProperty("max_velocity_scaling_factor", max_vel_factor);
+    pilz_ptp_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor);
     solvers_["pilz_PTP"] = pilz_ptp_planner;
 
     // Initialize Pilz LIN Planner
     auto pilz_lin_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
     pilz_lin_planner->setPlannerId(planner_id.empty() ? "LIN" : planner_id);
-    pilz_lin_planner->setProperty("max_velocity_scaling_factor", max_vel_factor_lin);
-    pilz_lin_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor_lin);
+    pilz_lin_planner->setProperty("max_velocity_scaling_factor", max_vel_factor);
+    pilz_lin_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor);
     solvers_["pilz_LIN"] = pilz_lin_planner;
 
     // Initialize Pilz CIRC Planner
     auto pilz_circ_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "pilz_industrial_motion_planner");
     pilz_circ_planner->setPlannerId(planner_id.empty() ? "CIRC" : planner_id);
-    pilz_circ_planner->setProperty("max_velocity_scaling_factor", max_vel_factor_circ);
-    pilz_circ_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor_circ);
+    pilz_circ_planner->setProperty("max_velocity_scaling_factor", max_vel_factor);
+    pilz_circ_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor);
     solvers_["pilz_CIRC"] = pilz_circ_planner;
 
     RCLCPP_INFO(node_->get_logger(), "Initialized Pilz solvers: PTP, LIN, CIRC");
@@ -267,8 +291,8 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     // Initialize OMPL Planner
     auto ompl_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_, "ompl");
     ompl_planner->setPlannerId(planner_id.empty() ? "RRTConnectkConfigDefault" : planner_id);
-    ompl_planner->setProperty("max_velocity_scaling_factor", max_vel_factor_ptp_or_ompl);
-    ompl_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor_ptp_or_ompl);
+    ompl_planner->setProperty("max_velocity_scaling_factor", max_vel_factor);
+    ompl_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor);
     solvers_["ompl_RRTConnect"] = ompl_planner;
 
     RCLCPP_INFO(node_->get_logger(), "Initialized OMPL solver: RRTConnect");
@@ -282,39 +306,12 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     return;
   }
 
-  // ----------------------------------------------------------------------
-  // Save the selected solver configuration back into the memory folder
-  // so next time we start up, we re-use the same pipeline and parameters.
-  // ----------------------------------------------------------------------
-  std::string package_share_directory;
-  try {
-    package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
-  } catch (const std::exception& e) {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to get package share directory for 'fairino_mtc_demo': %s", e.what());
-    return;
-  }
-
-  std::string memory_dir = package_share_directory + "/memory/";
-  if (!fs::exists(memory_dir)) {
-    try {
-      fs::create_directories(memory_dir);
-      RCLCPP_INFO(node_->get_logger(), "Created memory directory at %s", memory_dir.c_str());
-    }
-    catch (const fs::filesystem_error& e) {
-      RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
-      return;
-    }
-  }
-
-  std::string config_file = memory_dir + "current_solver_config.yaml";
-  saveSolverConfig(config_file);
 }
 
 // ---------------------------------------------------------------------
 // The rest of your methods remain basically the same, except we have
 // removed references to any hard-coded /home/... path in them. 
 // ---------------------------------------------------------------------
-
 void TaskBuilder::printRobotParams() const
 {
   auto robot_model = task_.getRobotModel();
@@ -418,20 +415,155 @@ void TaskBuilder::clearScene()
   }
 }
 
+std::map<std::string, geometry_msgs::msg::Pose> TaskBuilder::loadObjectLocations(const std::string& file_path)
+{
+  std::map<std::string, geometry_msgs::msg::Pose> object_map;
+
+  if (!fs::exists(file_path))
+    return object_map;  // return empty if file doesn't exist yet
+
+  try {
+    YAML::Node yaml_root = YAML::LoadFile(file_path);
+    if (!yaml_root["objects"]) 
+      return object_map;
+
+    YAML::Node objects_node = yaml_root["objects"];
+    for (auto it = objects_node.begin(); it != objects_node.end(); ++it) {
+      std::string obj_name = it->first.as<std::string>();
+      YAML::Node pose_node = it->second;
+
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = pose_node["x"].as<double>();
+      pose.position.y = pose_node["y"].as<double>();
+      pose.position.z = pose_node["z"].as<double>();
+      pose.orientation.x = pose_node["rx"].as<double>();
+      pose.orientation.y = pose_node["ry"].as<double>();
+      pose.orientation.z = pose_node["rz"].as<double>();
+      pose.orientation.w = pose_node["rw"].as<double>();
+
+      object_map[obj_name] = pose;
+    }
+  }
+  catch (const std::exception& e) {
+    // Log error as needed
+    std::cerr << "[loadObjectLocations] Error reading file: " << e.what() << std::endl;
+  }
+  return object_map;
+}
+
+void TaskBuilder::saveObjectLocations(const std::string& file_path,
+                                const std::map<std::string, geometry_msgs::msg::Pose>& object_map)
+{
+  YAML::Node root;
+  YAML::Node objects_node;
+
+  // If file already exists, load it first to preserve any unknown fields
+  if (fs::exists(file_path)) {
+    try {
+      root = YAML::LoadFile(file_path);
+      if (!root["objects"]) {
+        root["objects"] = YAML::Node(YAML::NodeType::Map);
+      }
+      objects_node = root["objects"];
+    }
+    catch (const std::exception& e) {
+      // If parsing fails, we start fresh
+      std::cerr << "[saveObjectLocations] Warning: Could not parse existing YAML. Overwriting. " << e.what() << std::endl;
+      root = YAML::Node();
+      objects_node = YAML::Node(YAML::NodeType::Map);
+    }
+  } else {
+    // No file -> start fresh
+    objects_node = YAML::Node(YAML::NodeType::Map);
+  }
+
+  // Update objects_node with the current map
+  for (const auto& kv : object_map) {
+    const std::string& obj_name = kv.first;
+    const auto& pose = kv.second;
+    objects_node[obj_name]["x"]  = pose.position.x;
+    objects_node[obj_name]["y"]  = pose.position.y;
+    objects_node[obj_name]["z"]  = pose.position.z;
+    objects_node[obj_name]["rx"] = pose.orientation.x;
+    objects_node[obj_name]["ry"] = pose.orientation.y;
+    objects_node[obj_name]["rz"] = pose.orientation.z;
+    objects_node[obj_name]["rw"] = pose.orientation.w;
+  }
+
+  // Place back in root
+  root["objects"] = objects_node;
+
+  // Write out to disk
+  try {
+    std::ofstream fout(file_path);
+    fout << root;
+    fout.close();
+  }
+  catch (const std::exception& e) {
+    std::cerr << "[saveObjectLocations] Error writing file: " << e.what() << std::endl;
+  }
+}
+
 void TaskBuilder::removeObject(const std::string& object_name)
 {
   RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
   moveit::planning_interface::PlanningSceneInterface psi;
 
-  // Retrieve all known collision object names in the planning scene
-  std::vector<std::string> object_ids = psi.getKnownObjectNames();
-
-  if (std::find(object_ids.begin(), object_ids.end(), object_name) == object_ids.end()) {
+  // Get known objects
+  std::vector<std::string> known_objects = psi.getKnownObjectNames();
+  if (std::find(known_objects.begin(), known_objects.end(), object_name) == known_objects.end()) {
     RCLCPP_INFO(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
     return;
   }
 
+  // -----------------------------------------------------
+  // Retrieve the object's pose from the scene 
+  // (assuming a single pose if the object has only one primitive).
+  // -----------------------------------------------------
+  auto object_map = psi.getObjects({object_name});
+  if (object_map.find(object_name) != object_map.end()) {
+    const moveit_msgs::msg::CollisionObject& obj_msg = object_map[object_name];
+    if (!obj_msg.primitive_poses.empty()) {
+      geometry_msgs::msg::Pose pose = obj_msg.primitive_poses[0];
+
+      // Load existing locations from file
+      std::string package_share_directory;
+      try {
+        package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+      } catch(const std::exception& e) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Failed to get package share directory for 'fairino_mtc_demo': %s",
+                     e.what());
+        // fallback
+        return;
+      }
+      std::string memory_dir = package_share_directory + "/memory/";
+      if (!fs::exists(memory_dir)) {
+        try {
+          fs::create_directories(memory_dir);
+        } catch (const fs::filesystem_error& e) {
+          RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
+          return;
+        }
+      }
+      std::string object_locations_file = memory_dir + "object_locations.yaml";
+
+      // Load map from file
+      auto existing_locations = loadObjectLocations(object_locations_file);
+
+      // Update with the new location for this object
+      existing_locations[object_name] = pose;
+
+      // Save back to file
+      saveObjectLocations(object_locations_file, existing_locations);
+      RCLCPP_INFO(node_->get_logger(), "Saved location of '%s' to %s", 
+                  object_name.c_str(), object_locations_file.c_str());
+    }
+  }
+
+  // Finally remove the object from the scene
   psi.removeCollisionObjects({object_name});
+  RCLCPP_INFO(node_->get_logger(), "Object '%s' removed from scene.", object_name.c_str());
 }
 
 void TaskBuilder::spawnObject(const std::string& object_name, const std::string& object_shape,
@@ -439,40 +571,94 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
                               double rx, double ry, double rz, double rw, 
                               double da, double db, double dc)
 {
+  // -----------------------------------------------------
+  // Check if user-provided coordinates are valid or "missing"
+  // We'll treat them as missing if they are std::isnan().
+  // Another approach could be (x==0 && y==0 && z==0) but that
+  // might conflict if a valid location is genuinely at 0,0,0.
+  // -----------------------------------------------------
+  bool coordinates_provided = !(std::isnan(x) || std::isnan(y) || std::isnan(z) ||
+                                std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw));
+
+  if (!coordinates_provided) {
+    RCLCPP_INFO(node_->get_logger(), 
+                "[spawn_object] Coordinates not provided; reading from memory if available.");
+
+    // Attempt to load from memory
+    std::string package_share_directory;
+    try {
+      package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+    } catch(const std::exception& e) {
+      RCLCPP_ERROR(node_->get_logger(),
+                   "Failed to get package share directory for 'fairino_mtc_demo': %s",
+                   e.what());
+      return;
+    }
+    std::string memory_dir = package_share_directory + "/memory/";
+    std::string object_locations_file = memory_dir + "object_locations.yaml";
+
+    auto existing_locations = loadObjectLocations(object_locations_file);
+    if (existing_locations.find(object_name) != existing_locations.end()) {
+      geometry_msgs::msg::Pose remembered_pose = existing_locations[object_name];
+      x  = remembered_pose.position.x;
+      y  = remembered_pose.position.y;
+      z  = remembered_pose.position.z;
+      rx = remembered_pose.orientation.x;
+      ry = remembered_pose.orientation.y;
+      rz = remembered_pose.orientation.z;
+      rw = remembered_pose.orientation.w;
+
+      RCLCPP_INFO(node_->get_logger(),
+        "[spawn_object] Found previous location for '%s': (%.2f, %.2f, %.2f) / (%.2f,%.2f,%.2f,%.2f)",
+        object_name.c_str(), x, y, z, rx, ry, rz, rw);
+    } else {
+      RCLCPP_WARN(node_->get_logger(), 
+        "No recorded location for '%s' found in memory. Using default (0,0,0, identity orientation).",
+        object_name.c_str());
+      x=0; y=0; z=0;
+      rx=0; ry=0; rz=0; rw=1;
+    }
+  }
+
   RCLCPP_INFO(node_->get_logger(),
-    "[spawn_object] name=%s, pos=(%.2f, %.2f, %.2f), orient=(%.2f, %.2f, %.2f, %.2f)",
-            object_name.c_str(), x, y, z, rx, ry, rz, rw);
+    "[spawn_object] name=%s, shape=%s, pose=(%.2f, %.2f, %.2f), orient=(%.2f, %.2f, %.2f, %.2f)",
+     object_name.c_str(), object_shape.c_str(), x, y, z, rx, ry, rz, rw);
 
   moveit_msgs::msg::CollisionObject object;
   object.id = object_name;
-  object.header.frame_id = "world"; // Adjust as needed
+  object.header.frame_id = "world"; // or your planning frame
 
   // Set the object shape
   if (object_shape == "cylinder") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-    object.primitives[0].dimensions = {da, db}; // da: height, db: radius
+    // da = height, db = radius
+    object.primitives[0].dimensions = {da, db}; 
   }
   else if (object_shape == "box") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
-    object.primitives[0].dimensions = {da, db, dc}; // da, db, dc: x, y, z dimensions
+    // da, db, dc = x, y, z
+    object.primitives[0].dimensions = {da, db, dc};
   }
   else if (object_shape == "sphere") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::SPHERE;
-    object.primitives[0].dimensions = {da}; // da: radius
+    // da = radius
+    object.primitives[0].dimensions = {da};
   }
   else if (object_shape == "cone") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CONE;
-    object.primitives[0].dimensions = {da, db}; // da: height, db: radius
+    // da = height, db = radius
+    object.primitives[0].dimensions = {da, db};
   }
   else {
     RCLCPP_ERROR(node_->get_logger(), "Unsupported shape type: %s", object_shape.c_str());
     return;
   }
 
+  // Set pose
   geometry_msgs::msg::Pose pose;
   pose.position.x = x;
   pose.position.y = y;
@@ -483,9 +669,12 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
   pose.orientation.w = rw;
   object.pose = pose;
 
+  // Finally spawn in the scene
   moveit::planning_interface::PlanningSceneInterface psi;
   psi.applyCollisionObject(object);
-  RCLCPP_INFO(node_->get_logger(), "Spawned object '%s' with shape '%s'.", object_name.c_str(), object_shape.c_str());
+  RCLCPP_INFO(node_->get_logger(),
+              "Spawned object '%s' with shape '%s' in the scene.",
+              object_name.c_str(), object_shape.c_str());
 }
 
 void TaskBuilder::jointsMove(const std::vector<double>& joint_values)

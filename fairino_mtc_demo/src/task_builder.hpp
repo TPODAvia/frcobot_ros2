@@ -62,14 +62,16 @@ public:
                   double da, double db, double dc);
 
   // Switch pipeline / planner
-void choosePipeline(const std::string& pipeline_name,
-                                 const std::string& planner_id,
-                                 double max_vel_factor_ptp_or_ompl,
-                                 double max_acc_factor_ptp_or_ompl,
-                                 double max_vel_factor_lin,
-                                 double max_acc_factor_lin,
-                                 double max_vel_factor_circ,
-                                 double max_acc_factor_circ);
+  void choosePipeline(const std::string& pipeline_name,
+                      const std::string& planner_id,
+                                  double max_vel_factor,
+                                  double max_acc_factor);
+
+  // Saves the current solver configuration to a YAML file.
+  void savePipelineConfig(const std::string& pipeline_name,
+                          const std::string& planner_id,
+                                      double max_vel_factor,
+                                      double max_acc_factor);
 
   // Move the manipulator to a specified joint position
   void jointsMove(const std::vector<double>& joint_values);
@@ -136,7 +138,7 @@ private:
   // We'll store the latest joint positions from /joint_states in here:
   std::vector<std::string> joint_names_;
   std::unordered_map<std::string, double> current_joint_positions_;
-  
+
   // The subscriber to /joint_states
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
 
@@ -160,18 +162,41 @@ private:
                                 double time_step = 0.05);
   
   /**
-   * @brief Saves the current solver configuration to a YAML file.
-   * 
-   * @param file_path The path to the YAML configuration file.
-   */
-  void saveSolverConfig(const std::string& file_path);
-  
-  /**
    * @brief Loads the solver configuration from a YAML file and sets the current_solver_.
    * 
    * @param file_path The path to the YAML configuration file.
    * @return true if successful, false otherwise.
    */
   bool loadSolverConfig(const std::string& file_path);
+
+  /** 
+   * @brief Load object poses from memory file into a map<string, geometry_msgs::msg::Pose>.
+   *        The YAML structure is assumed to be something like:
+   * 
+   *        objects:
+   *          my_box:
+   *            x: 0.1
+   *            y: 0.2
+   *            z: 0.3
+   *            rx: 0.0
+   *            ry: 0.0
+   *            rz: 0.0
+   *            rw: 1.0
+   *          cylinder_1:
+   *            x: -0.1
+   *            y: 0.5
+   *            z: 0.3
+   *            rx: 0.0
+   *            ry: 0.0
+   *            rz: 0.0
+   *            rw: 1.0
+   */
+  static std::map<std::string, geometry_msgs::msg::Pose> loadObjectLocations(const std::string& file_path);
+
+  /**
+   * @brief Save object poses to the memory file. The data will be written under "objects:".
+   */
+  static void saveObjectLocations(const std::string& file_path,
+                                  const std::map<std::string, geometry_msgs::msg::Pose>& object_map);
 };
 

@@ -1,7 +1,7 @@
 [
     {
      "1714837233.243095": {
-      "joints_position": {
+      "joints_move": {
        "positions": {
         "j1": 0.0,
         "j2": -1.57,
@@ -23,7 +23,7 @@
     {
      "1714837262.683595": {
       "end_coordinate": {
-       "tf_end": {
+       "absolute_move": {
         "position": [
          0.0,
          0.3,
@@ -56,7 +56,7 @@
     {
      "1714837289.0068243": {
       "end_coordinate": {
-       "tf_end": {
+       "absolute_move": {
         "position": [
          -0.33,
          0.63,
@@ -88,7 +88,7 @@
     },
     {
      "1714837328.7905817": {
-      "joints_position": {
+      "joints_move": {
        "positions": {
         "j1": 0.0,
         "j2": -1.57,

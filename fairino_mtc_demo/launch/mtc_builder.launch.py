@@ -44,7 +44,8 @@ def generate_launch_description():
             str(reserved_4).lower(),
                 # "get_robot_param",
                 # "clear_scene"
-                # "remove_object", "cone"
+                # "remove_object", "cylinder"
+                "spawn_object", "cylinder"
                 # "spawn_object", "cylinder", "1", "1", "1", "0", "0", "0", "1",    "0.1", "0.02", "0.0"
                 # "spawn_object", "box",      "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.05", "0.05"
                 # "spawn_object", "sphere",   "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.0", "0.0"
@@ -66,8 +67,9 @@ def generate_launch_description():
                 # "absolute_move", "world", "0.5", "0.5"
 
                 # "choose_pipeline", "ompl", "RRTConnect"
-                "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
+                # "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
 
+                # The functionalities below are not working
                 # "trajectory_move", file
                 # "feedback_move", "mode" 
                 # "collaborative_move", "mode"

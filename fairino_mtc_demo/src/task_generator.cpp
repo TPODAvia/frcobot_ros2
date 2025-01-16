@@ -9,6 +9,7 @@
 #include <map>
 #include <algorithm>  // for std::remove_if
 #include <cctype>     // for std::isspace
+#include <chrono>
 #include <limits>
 #include <geometry_msgs/msg/pose.hpp>
 #include <filesystem>
@@ -71,6 +72,56 @@ static CommandKind parseCommand(const std::string& cmd)
   return CommandKind::UNKNOWN;
 }
 
+static void appendToJsonLog(
+    const nlohmann::json& entry_content,
+    rclcpp::Node::SharedPtr node)
+{
+  // 1) We define a fixed path:
+  static const std::string JSON_FILE_PATH =
+    "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/test.json";
+
+  // 2) Load existing JSON (if any)
+  nlohmann::json json_array = nlohmann::json::array();  // default: empty array
+  if (std::filesystem::exists(JSON_FILE_PATH))
+  {
+    try {
+      std::ifstream fin(JSON_FILE_PATH);
+      if (fin.is_open()) {
+        fin >> json_array;  // if it fails, it throws
+      }
+    } catch (const std::exception& e) {
+      RCLCPP_WARN(node->get_logger(),
+                  "Error parsing existing test.json: %s. Will overwrite with new array.",
+                  e.what());
+      json_array = nlohmann::json::array();
+    }
+  }
+
+  // 3) Get current time in seconds since epoch (float).
+  //    We'll use that as a string key, e.g. "1713337691.1535506"
+  double now_float = std::chrono::duration<double>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+  std::string now_str = std::to_string(now_float);
+
+  // 4) Build a top-level JSON object: { "now_str": entry_content }
+  //    Then push it into the array.
+  nlohmann::json new_entry;
+  new_entry[now_str] = entry_content;
+  json_array.push_back(new_entry);
+
+  // 5) Write back to file
+  try {
+    std::ofstream fout(JSON_FILE_PATH);
+    fout << json_array.dump(2) << std::endl;  // pretty print, indent=2
+    fout.close();
+    RCLCPP_INFO(node->get_logger(), "Appended new entry to %s", JSON_FILE_PATH.c_str());
+  }
+  catch (const std::exception& e) {
+    RCLCPP_ERROR(node->get_logger(),
+                 "Error writing JSON file: %s. Exception: %s",
+                 JSON_FILE_PATH.c_str(), e.what());
+  }
+}
 
 static void removeUnwantedKeys(nlohmann::json& j, const std::vector<std::string>& keys_to_remove)
 {
@@ -820,6 +871,8 @@ int main(int argc, char** argv)
   TaskBuilder builder(node, arm_group_name, tip_frame);
   builder.newTask("demo_task");
 
+  nlohmann::json entry;
+
   // Switch on the parsed command
   switch (parseCommand(command_str))
   {
@@ -832,6 +885,13 @@ int main(int argc, char** argv)
     case CommandKind::CLEAR_SCENE:
     {
       builder.clearScene();
+      // Format:
+      // {
+      //   "clear_scene": {
+      //     "clear_scene": 1
+      //   }
+      // }
+      entry["clear_scene"] = { { "clear_scene", 1 } };
       break;
     }
 
@@ -845,6 +905,14 @@ int main(int argc, char** argv)
         return 1;
       }
       builder.removeObject(argv[10]);
+      // Format:
+      // {
+      //   "remove_object": {
+      //     "hello_box": 1
+      //   }
+      // }
+      std::string object_name = argv[10];
+      entry["remove_object"] = { { object_name, 1 } };
       break;
     }
 
@@ -874,6 +942,23 @@ int main(int argc, char** argv)
 
       // Call the spawnObject function
       builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
+
+      // Format:
+      // {
+      //   "spawn_object": {
+      //     "hello_box": {
+      //       "x": 0.0,
+      //       "y": 0.5,
+      //       "z": 0.2
+      //     }
+      //   }
+      // }
+      std::string object_name = argv[10];
+      entry["spawn_object"][object_name] = {
+        { "x", x },
+        { "y", y },
+        { "z", z }
+      };
       break;
     }
 
@@ -896,6 +981,16 @@ int main(int argc, char** argv)
       }
 
       builder.savePipelineConfig(argv[10], argv[11], 0, 0);
+
+      // Format:
+      // {
+      //   "choose_pipeline": {
+      //     "OMPL": "RRTConnect"
+      //   }
+      // }
+      std::string pipeline = argv[10];
+      std::string planner  = argv[11];
+      entry["choose_pipeline"][pipeline] = planner;
       break;
     }
 
@@ -916,6 +1011,29 @@ int main(int argc, char** argv)
         
       }
       builder.jointsMove(joint_values);
+
+      // Format:
+      // {
+      //   "joints_move": {
+      //     "positions": {
+      //       "j1": -0.05,
+      //       "j2": -1.38,
+      //       ...
+      //     }
+      //   }
+      // }
+      // Note that in your example you labeled them "j1", "j2", etc. 
+      // We'll do that here, or just store them as an array.
+      // We'll assume the 6 joint values are argv[10..15].
+      nlohmann::json joint_map;
+      joint_map["j1"] = std::stod(argv[10]);
+      joint_map["j2"] = std::stod(argv[11]);
+      joint_map["j3"] = std::stod(argv[12]);
+      joint_map["j4"] = std::stod(argv[13]);
+      joint_map["j5"] = std::stod(argv[14]);
+      joint_map["j6"] = std::stod(argv[15]);
+
+      entry["joints_move"]["positions"] = joint_map;
       break;
     }
 
@@ -977,6 +1095,22 @@ int main(int argc, char** argv)
 
         // Call the builder's absoluteMove with the specified pose
         builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
+
+        // Example:
+        // {
+        //   "end_coordinate": {
+        //     "absolute_move": {
+        //       "position": [0.0, 0.5, 0.2],
+        //       "quaternion": [0, 0, 0, 1]
+        //     }
+        //   }
+        // }
+        // We'll replicate your "end_coordinate" wrapping if you like:
+
+        entry["end_coordinate"]["absolute_move"] = {
+          { "position",   { x, y, z } },
+          { "quaternion", { rx, ry, rz, rw } }
+        };
       }
       // -----------------------------------------------------------------
       // Case 3: Incorrect usage
@@ -1146,6 +1280,12 @@ int main(int argc, char** argv)
         return 1;
       }
       builder.attachObject(argv[10], argv[11]);
+
+      // e.g. "attach_object": { "hello_box": "absolute_move" }
+      // Suppose argv[10] is the object name, argv[11] is the link
+      std::string object_name = argv[10];
+      std::string link_name   = argv[11];
+      entry["attach_object"][object_name] = link_name;
       break;
     }
 
@@ -1159,6 +1299,11 @@ int main(int argc, char** argv)
         return 1;
       }
       builder.detachObject(argv[10], argv[11]);
+
+      // e.g. "detach_object": { "hello_box": "absolute_move" }
+      std::string object_name = argv[10];
+      std::string link_name   = argv[11];
+      entry["detach_object"][object_name] = link_name;
       break;
     }
 
@@ -1408,7 +1553,9 @@ int main(int argc, char** argv)
     rclcpp::shutdown();
     return 1;
   }
-  if (save_json) {
+  // Finally, if `entry` is non-empty, append it to test.json
+  if (!entry.empty() && save_json) {
+    appendToJsonLog(entry, node);
     RCLCPP_INFO(node->get_logger(), "Saving to JSON file!");
   }
 

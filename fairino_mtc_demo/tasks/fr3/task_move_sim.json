@@ -33,7 +33,7 @@
     },
     {
      "1713629311.5414882": {
-      "joints_position": {
+      "joints_move": {
        "positions": {
         "j1": 0.0,
         "j2": -1.57,
@@ -48,7 +48,7 @@
     {
      "1713629024.7819846": {
       "end_coordinate": {
-       "tf_end": {
+       "absolute_move": {
         "position": [
          0.0,
          0.3,
@@ -67,7 +67,7 @@
     {
      "1713629043.8081374": {
       "attach_object": {
-       "hello_box": "tf_end"
+       "hello_box": "absolute_move"
       }
      }
     },
@@ -81,7 +81,7 @@
     {
      "1713629193.611527": {
       "end_coordinate": {
-       "tf_end": {
+       "absolute_move": {
         "position": [
          -0.007699627581941762,
          0.31049910766862593,
@@ -100,7 +100,7 @@
     {
      "1713629295.552877": {
       "detach_object": {
-       "hello_box": "tf_end"
+       "hello_box": "absolute_move"
       }
      }
     },
@@ -113,7 +113,7 @@
     },
     {
      "1713629311.5414882": {
-      "joints_position": {
+      "joints_move": {
        "positions": {
         "j1": 0.0,
         "j2": -1.57,

@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
-
+import os
 # Adjust to match your actual MoveIt package name
 packagename = "fairino10_v6_moveit2_config"
 robot_name = "fairino10_v6_robot"
@@ -13,6 +13,12 @@ reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
 reserved_3 = False # this could be for tolerance
 reserved_4 = False # this could be for gripper
+# Dynamically get the home directory
+home_dir = os.path.expanduser("~")
+
+# Define paths relative to the home directory
+default_json_path = os.path.join(home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/")
+json_sim_content = os.path.join(default_json_path, "test.json")
 
 def generate_launch_description():
     # 1) Build the MoveIt configuration dictionary
@@ -50,17 +56,17 @@ def generate_launch_description():
                 # "joints_move"
                 # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
                 # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0","0", "1.1"
+                # "check_json_files", default_json_path
+                # "delete_json_sim_content", json_sim_content
+                # "delete_json_temp", default_json_path
 
                 # "absolute_move", "world", "0.5", "0.1", "0.5", "0", "0", "0", "1"
                 # "absolute_move", "world", tip_frame, "wrist3_link"
                 # "absolute_move", "world", tip_frame, "cylinder"
                 # "absolute_move", "world", "0.5", "0.5"
 
-                # "choose_pipeline", "OMPL", "RRTConnect"
-                # "choose_pipeline", "PILZ", "LIN"                
-                # "check_json_files", "default"
-                "delete_json_sim_content", "test.json"
-                # "delete_json_temp", "default"
+                # "choose_pipeline", "ompl", "RRTConnect"
+                "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
 
                 # "trajectory_move", file
                 # "feedback_move", "mode" 

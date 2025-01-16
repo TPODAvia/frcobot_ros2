@@ -93,6 +93,45 @@ static void removeUnwantedKeys(nlohmann::json& j, const std::vector<std::string>
   }
 }
 
+/**
+ * @brief Save JSON data to a specified file.
+ * 
+ * @param directory The path to the file where JSON data should be saved.
+ * @param json_data The JSON data to be saved (nlohmann::json object).
+ * @param node Shared pointer to the rclcpp node for logging.
+ * @return int Returns 0 on success, 1 on failure.
+ */
+static int saveJsonFile(const std::string& directory, const nlohmann::json& json_data, rclcpp::Node::SharedPtr node)
+{
+  try {
+    // Ensure the directory exists (create if necessary)
+    std::filesystem::path file_path(directory);
+    std::filesystem::path parent_dir = file_path.parent_path();
+    
+    if (!std::filesystem::exists(parent_dir)) {
+      std::filesystem::create_directories(parent_dir);
+      RCLCPP_INFO(node->get_logger(), "Created directory: %s", parent_dir.string().c_str());
+    }
+
+    // Open file for writing
+    std::ofstream fout(directory);
+    if (!fout.is_open()) {
+      RCLCPP_ERROR(node->get_logger(), "Failed to open file for writing: %s", directory.c_str());
+      return 1;
+    }
+
+    // Write JSON data with indentation
+    fout << json_data.dump(2) << std::endl;
+    RCLCPP_INFO(node->get_logger(), "Successfully saved JSON file: %s", directory.c_str());
+    
+    fout.close();
+    return 0;
+  } catch (const std::exception& e) {
+    RCLCPP_ERROR(node->get_logger(), "Error saving JSON file: %s. Exception: %s", directory.c_str(), e.what());
+    return 1;
+  }
+}
+
 /** 
  * CommandKind::DELETE_JSON_SIM_CONTENT 
  *
@@ -256,9 +295,10 @@ static int handleCheckJsonFiles(const std::string& directory, rclcpp::Node::Shar
 static int handleDeleteJsonTemp(const std::string& directory, rclcpp::Node::SharedPtr node)
 {
   std::cout << "test.json and mod_test.json will be deleted in: " << directory << "\n";
-  std::cout << "Proceed? (y/n): ";
-  std::string answer;
-  std::cin >> answer;
+  std::cout << "Proceed? (y/n): y";
+  std::string answer = "y";
+  // std::string answer; // std::cin are not working with ros2 launch
+  // std::cin >> answer;
 
   if (answer == "y" || answer == "Y") {
     std::filesystem::path test_file      = std::filesystem::path(directory) / "test.json";
@@ -834,13 +874,22 @@ int main(int argc, char** argv)
     case CommandKind::CHOOSE_PIPELINE:
     {
       // choose_pipeline <pipeline_name> <planner_id>
-      if (argc < 14) {
+      if (argc != 17) {
         RCLCPP_ERROR(node->get_logger(),
                      "Usage: choose_pipeline <pipeline_name> <planner_id>");
         rclcpp::shutdown();
         return 1;
       }
-      builder.choosePipeline(argv[10], argv[11]);
+
+      // Check if argv[10] and argv[11] are non-numeric strings
+      if (isNumeric(argv[10]) || isNumeric(argv[11])) {
+        RCLCPP_ERROR(node->get_logger(),
+                    "choose_pipeline: expected tip_frame and target_frame as non-numeric strings");
+        rclcpp::shutdown();
+        return 1;
+      }
+
+      builder.choosePipeline(argv[10], argv[11], 1,1,1,1,1,1);
       break;
     }
 
@@ -940,7 +989,7 @@ int main(int argc, char** argv)
       // Check if argv[10] and argv[11] are non-numeric strings
       if (isNumeric(argv[10]) || isNumeric(argv[11])) {
         RCLCPP_ERROR(node->get_logger(),
-                    "absolute_move: expected tip_frame and target_frame as non-numeric strings");
+                    "displacement_move: expected tip_frame and target_frame as non-numeric strings");
         rclcpp::shutdown();
         return 1;
       }
@@ -1117,7 +1166,22 @@ int main(int argc, char** argv)
         return 1;
       }
 
+      nlohmann::json example_data = {
+        {"key1", "value1"},
+        {"key2", 42},
+        {"key3", { "subkey1", "subkey2" }}
+      };
+
       std::string filename = argv[10];
+      int result = saveJsonFile(filename, example_data, node);
+
+      if (result == 0) {
+        RCLCPP_INFO(node->get_logger(), "JSON file saved successfully.");
+      } else {
+        RCLCPP_ERROR(node->get_logger(), "Failed to save JSON file.");
+      }
+
+
       int rc = handleDeleteJsonSimContent(filename, node);
       rclcpp::shutdown();
       return rc;

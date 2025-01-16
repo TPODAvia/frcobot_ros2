@@ -62,7 +62,14 @@ public:
                   double da, double db, double dc);
 
   // Switch pipeline / planner
-  void choosePipeline(const std::string& pipeline_name, const std::string& planner_id);
+void choosePipeline(const std::string& pipeline_name,
+                                 const std::string& planner_id,
+                                 double max_vel_factor_ptp_or_ompl,
+                                 double max_acc_factor_ptp_or_ompl,
+                                 double max_vel_factor_lin,
+                                 double max_acc_factor_lin,
+                                 double max_vel_factor_circ,
+                                 double max_acc_factor_circ);
 
   // Move the manipulator to a specified joint position
   void jointsMove(const std::vector<double>& joint_values);

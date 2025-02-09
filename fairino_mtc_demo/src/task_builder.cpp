@@ -1,15 +1,12 @@
 #include "task_builder.hpp"
 
-#include <moveit/task_constructor/stages/move_to.h>
-#include <moveit/planning_scene/planning_scene.h>
-#include <moveit_msgs/msg/move_it_error_codes.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include <filesystem>  // C++17
+#include <filesystem>
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <sstream>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -29,6 +26,9 @@ TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
 
   // Initialize default solvers map if needed
   solvers_["sampling_planner"] = sampling_planner_;
+
+  // Initialize move_group_ (using MoveIt2’s MoveGroupInterface)
+  move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(node_, arm_group_name_);
 
   // ---------------------------------------------------------------------
   // Use ament_index_cpp to get the path to your ROS 2 package's share dir
@@ -69,11 +69,6 @@ void TaskBuilder::jointStateCallback(const sensor_msgs::msg::JointState::SharedP
 {
   if (joint_names_.empty() && !msg->name.empty()) {
     joint_names_ = msg->name;  // Store joint names from the first message
-    // Debug
-    // RCLCPP_DEBUG(node_->get_logger(), "Received joint names:");
-    // for (const auto& name : joint_names_) {
-    //   RCLCPP_DEBUG(node_->get_logger(), "  %s", name.c_str());
-    // }
   }
 
   // Store joint positions in the map
@@ -227,8 +222,8 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
     double vel_scale = 0.0, acc_scale = 0.0;
 
     if (pipeline_name == "pilz_industrial_motion_planner" || pipeline_name == "ompl") {
-        vel_scale = config["max_velocity_scaling_factor"].as<double>();
-        acc_scale = config["max_acceleration_scaling_factor"].as<double>();
+      vel_scale = config["max_velocity_scaling_factor"].as<double>();
+      acc_scale = config["max_acceleration_scaling_factor"].as<double>();
 
       choosePipeline(pipeline_name, planner_id, vel_scale, acc_scale);
     }
@@ -305,13 +300,12 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name: %s", pipeline_name.c_str());
     return;
   }
-
 }
 
 // ---------------------------------------------------------------------
-// The rest of your methods remain basically the same, except we have
-// removed references to any hard-coded /home/... path in them. 
+// The rest of your methods
 // ---------------------------------------------------------------------
+
 void TaskBuilder::printRobotParams() const
 {
   auto robot_model = task_.getRobotModel();
@@ -357,8 +351,7 @@ void TaskBuilder::printRobotParams() const
     RCLCPP_INFO(node_->get_logger(), "  %s", group_name.c_str());
 
   RCLCPP_INFO(node_->get_logger(), "****************************************************");
-  RCLCPP_INFO(node_->get_logger(),
-              "Robot markers: (no direct single call in MoveIt C++).");
+  RCLCPP_INFO(node_->get_logger(), "Robot markers: (no direct single call in MoveIt C++).");
 
   // ------------------------------------------------------------------
   // Wait for joint states if they haven't been received yet
@@ -445,7 +438,6 @@ std::map<std::string, geometry_msgs::msg::Pose> TaskBuilder::loadObjectLocations
     }
   }
   catch (const std::exception& e) {
-    // Log error as needed
     std::cerr << "[loadObjectLocations] Error reading file: " << e.what() << std::endl;
   }
   return object_map;
@@ -457,7 +449,6 @@ void TaskBuilder::saveObjectLocations(const std::string& file_path,
   YAML::Node root;
   YAML::Node objects_node;
 
-  // If file already exists, load it first to preserve any unknown fields
   if (fs::exists(file_path)) {
     try {
       root = YAML::LoadFile(file_path);
@@ -467,17 +458,14 @@ void TaskBuilder::saveObjectLocations(const std::string& file_path,
       objects_node = root["objects"];
     }
     catch (const std::exception& e) {
-      // If parsing fails, we start fresh
       std::cerr << "[saveObjectLocations] Warning: Could not parse existing YAML. Overwriting. " << e.what() << std::endl;
       root = YAML::Node();
       objects_node = YAML::Node(YAML::NodeType::Map);
     }
   } else {
-    // No file -> start fresh
     objects_node = YAML::Node(YAML::NodeType::Map);
   }
 
-  // Update objects_node with the current map
   for (const auto& kv : object_map) {
     const std::string& obj_name = kv.first;
     const auto& pose = kv.second;
@@ -490,10 +478,8 @@ void TaskBuilder::saveObjectLocations(const std::string& file_path,
     objects_node[obj_name]["rw"] = pose.orientation.w;
   }
 
-  // Place back in root
   root["objects"] = objects_node;
 
-  // Write out to disk
   try {
     std::ofstream fout(file_path);
     fout << root;
@@ -509,24 +495,18 @@ void TaskBuilder::removeObject(const std::string& object_name)
   RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
   moveit::planning_interface::PlanningSceneInterface psi;
 
-  // Get known objects
   std::vector<std::string> known_objects = psi.getKnownObjectNames();
   if (std::find(known_objects.begin(), known_objects.end(), object_name) == known_objects.end()) {
     RCLCPP_INFO(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
     return;
   }
 
-  // -----------------------------------------------------
-  // Retrieve the object's pose from the scene 
-  // (assuming a single pose if the object has only one primitive).
-  // -----------------------------------------------------
   auto object_map = psi.getObjects({object_name});
   if (object_map.find(object_name) != object_map.end()) {
     const moveit_msgs::msg::CollisionObject& obj_msg = object_map[object_name];
     if (!obj_msg.primitive_poses.empty()) {
       geometry_msgs::msg::Pose pose = obj_msg.primitive_poses[0];
 
-      // Load existing locations from file
       std::string package_share_directory;
       try {
         package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
@@ -534,7 +514,6 @@ void TaskBuilder::removeObject(const std::string& object_name)
         RCLCPP_ERROR(node_->get_logger(),
                      "Failed to get package share directory for 'fairino_mtc_demo': %s",
                      e.what());
-        // fallback
         return;
       }
       std::string memory_dir = package_share_directory + "/memory/";
@@ -548,20 +527,14 @@ void TaskBuilder::removeObject(const std::string& object_name)
       }
       std::string object_locations_file = memory_dir + "object_locations.yaml";
 
-      // Load map from file
       auto existing_locations = loadObjectLocations(object_locations_file);
-
-      // Update with the new location for this object
       existing_locations[object_name] = pose;
-
-      // Save back to file
       saveObjectLocations(object_locations_file, existing_locations);
       RCLCPP_INFO(node_->get_logger(), "Saved location of '%s' to %s", 
                   object_name.c_str(), object_locations_file.c_str());
     }
   }
 
-  // Finally remove the object from the scene
   psi.removeCollisionObjects({object_name});
   RCLCPP_INFO(node_->get_logger(), "Object '%s' removed from scene.", object_name.c_str());
 }
@@ -571,12 +544,6 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
                               double rx, double ry, double rz, double rw, 
                               double da, double db, double dc)
 {
-  // -----------------------------------------------------
-  // Check if user-provided coordinates are valid or "missing"
-  // We'll treat them as missing if they are std::isnan().
-  // Another approach could be (x==0 && y==0 && z==0) but that
-  // might conflict if a valid location is genuinely at 0,0,0.
-  // -----------------------------------------------------
   bool coordinates_provided = !(std::isnan(x) || std::isnan(y) || std::isnan(z) ||
                                 std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw));
 
@@ -584,7 +551,6 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
     RCLCPP_INFO(node_->get_logger(), 
                 "[spawn_object] Coordinates not provided; reading from memory if available.");
 
-    // Attempt to load from memory
     std::string package_share_directory;
     try {
       package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
@@ -609,14 +575,14 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
       rw = remembered_pose.orientation.w;
 
       RCLCPP_INFO(node_->get_logger(),
-        "[spawn_object] Found previous location for '%s': (%.2f, %.2f, %.2f) / (%.2f,%.2f,%.2f,%.2f)",
+        "[spawn_object] Found previous location for '%s': (%.2f, %.2f, %.2f) / (%.2f, %.2f, %.2f, %.2f)",
         object_name.c_str(), x, y, z, rx, ry, rz, rw);
     } else {
       RCLCPP_WARN(node_->get_logger(), 
         "No recorded location for '%s' found in memory. Using default (0,0,0, identity orientation).",
         object_name.c_str());
-      x=0; y=0; z=0;
-      rx=0; ry=0; rz=0; rw=1;
+      x = 0; y = 0; z = 0;
+      rx = 0; ry = 0; rz = 0; rw = 1;
     }
   }
 
@@ -628,29 +594,24 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
   object.id = object_name;
   object.header.frame_id = "world"; // or your planning frame
 
-  // Set the object shape
   if (object_shape == "cylinder") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-    // da = height, db = radius
     object.primitives[0].dimensions = {da, db}; 
   }
   else if (object_shape == "box") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
-    // da, db, dc = x, y, z
     object.primitives[0].dimensions = {da, db, dc};
   }
   else if (object_shape == "sphere") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::SPHERE;
-    // da = radius
     object.primitives[0].dimensions = {da};
   }
   else if (object_shape == "cone") {
     object.primitives.resize(1);
     object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CONE;
-    // da = height, db = radius
     object.primitives[0].dimensions = {da, db};
   }
   else {
@@ -658,7 +619,6 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
     return;
   }
 
-  // Set pose
   geometry_msgs::msg::Pose pose;
   pose.position.x = x;
   pose.position.y = y;
@@ -669,7 +629,6 @@ void TaskBuilder::spawnObject(const std::string& object_name, const std::string&
   pose.orientation.w = rw;
   object.pose = pose;
 
-  // Finally spawn in the scene
   moveit::planning_interface::PlanningSceneInterface psi;
   psi.applyCollisionObject(object);
   RCLCPP_INFO(node_->get_logger(),
@@ -744,7 +703,6 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
     return;
   }
 
-  // Check for valid numeric poses
   if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
       std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw)) {
     RCLCPP_ERROR(node_->get_logger(),
@@ -773,11 +731,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
   stage->setIKFrame(tip_frame != "None" ? tip_frame : frame_id);
   stage->setTimeout(10.0);
 
-    task_.add(std::move(stage));
-    task_.add(std::move(stage));
-
   task_.add(std::move(stage));
-
 }
 
 void TaskBuilder::displacementMove(const std::string& world_frame, 
@@ -849,164 +803,61 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
   RCLCPP_INFO(node_->get_logger(), "Performed displacement move with translation/rotation.");
 }
 
-void TaskBuilder::trajectoryMove(const std::vector<geometry_msgs::msg::Pose>& trajectory_poses)
+void TaskBuilder::trajectoryMove(const std::string& csv_file,
+                                 double velocity_scale,
+                                 double accel_scale,
+                                 double pose_tolerance)
 {
-  RCLCPP_INFO(node_->get_logger(),
-              "[trajectory_move] Moving along a trajectory with %zu poses",
-              trajectory_poses.size());
+  RCLCPP_INFO(node_->get_logger(), "[trajectoryMove] CSV: %s, vel=%.2f, accel=%.2f, tol=%.2f",
+              csv_file.c_str(), velocity_scale, accel_scale, pose_tolerance);
 
-  if (trajectory_poses.empty()) {
-    RCLCPP_ERROR(node_->get_logger(), "trajectoryMove() requires at least one pose");
+  // 1) Parse CSV
+  std::vector<geometry_msgs::msg::PoseStamped> waypoints = parseCsv(csv_file);
+  if (waypoints.empty()) {
+    RCLCPP_ERROR(node_->get_logger(), "No valid waypoints from CSV. Aborting trajectory_move.");
     return;
   }
+  // 2) Optionally set the move_group tolerances
+  move_group_->setGoalPositionTolerance(pose_tolerance);
+  move_group_->setGoalOrientationTolerance(pose_tolerance);
 
-  auto robot_model = task_.getRobotModel();
-  if (!robot_model) {
-    RCLCPP_ERROR(node_->get_logger(), "No robot model found in the MTC task. Did you call initTask()?");
-    return;
-  }
-
-  moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(robot_model);
-  robot_state->setToDefaultValues();
-
-  std::vector<std::vector<double>> joint_waypoints;
-  const moveit::core::JointModelGroup* jmg = robot_model->getJointModelGroup(arm_group_name_);
-  if (!jmg) {
-    RCLCPP_ERROR(node_->get_logger(), "Joint Model Group '%s' not found.", arm_group_name_.c_str());
-    return;
-  }
-
-  for (size_t i = 0; i < trajectory_poses.size(); ++i) {
-    bool found_ik = false;
-    constexpr int    max_attempts        = 10;
-    constexpr double per_attempt_timeout = 0.01;
-
-    for (int attempt = 0; attempt < max_attempts && !found_ik; ++attempt) {
-      found_ik = robot_state->setFromIK(jmg, trajectory_poses[i], tip_frame_, per_attempt_timeout);
-    }
-
-    if (!found_ik) {
-      RCLCPP_ERROR(node_->get_logger(), "IK failed for pose #%zu after %d attempts.", i, max_attempts);
-      return;
-    }
-
-    std::vector<double> current_joints;
-    robot_state->copyJointGroupPositions(jmg, current_joints);
-    joint_waypoints.push_back(std::move(current_joints));
-  }
-
-  robot_trajectory::RobotTrajectory trajectory(robot_model, arm_group_name_);
-  double total_time = 10.0;
-  double dt = (joint_waypoints.size() > 1)
-               ? total_time / (joint_waypoints.size() - 1)
-               : total_time;
-
-  for (size_t i = 0; i < joint_waypoints.size(); ++i) {
-    robot_state->setJointGroupPositions(jmg, joint_waypoints[i]);
-    trajectory.addSuffixWayPoint(*robot_state, i * dt);
-  }
-
-  trajectory_processing::IterativeParabolicTimeParameterization iptp;
-  bool success_time = iptp.computeTimeStamps(trajectory, 0.7, 0.7);
-  if (!success_time) {
-    RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed.");
-    return;
-  }
-
-  moveit_msgs::msg::RobotTrajectory robot_traj_msg;
-  trajectory.getRobotTrajectoryMsg(robot_traj_msg);
-  RCLCPP_INFO(node_->get_logger(),
-              "[trajectory_move] Successfully generated a time-parameterized "
-              "trajectory with %zu waypoints.",
-              joint_waypoints.size());
+  // 3) Plan & Execute
+  planAndExecute(waypoints, velocity_scale, accel_scale, pose_tolerance);
 }
 
-void TaskBuilder::trajectoryMoveV(const std::vector<geometry_msgs::msg::Pose>& trajectory,
-                                  const std::vector<geometry_msgs::msg::Twist>& velocities)
+void TaskBuilder::feedbackPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
 {
   RCLCPP_INFO(node_->get_logger(),
-    "[trajectory_move w/ vel] #poses=%zu, #vel=%zu",
-    trajectory.size(), velocities.size());
+              "[feedbackPoseCallback] Received new target Pose: (%.2f, %.2f, %.2f)",
+              msg->pose.position.x, 
+              msg->pose.position.y, 
+              msg->pose.position.z);
 
-  if (trajectory.size() != velocities.size() || trajectory.empty()) {
-    RCLCPP_ERROR(node_->get_logger(), 
-      "Mismatch in #poses and #velocities, or empty input. Aborting!");
-    return;
-  }
+  std::vector<geometry_msgs::msg::PoseStamped> single_target;
+  single_target.push_back(*msg);
 
-  auto robot_model = task_.getRobotModel();
-  if (!robot_model) {
-    RCLCPP_ERROR(node_->get_logger(), "No robot model found. Did you call initTask()?");
-    return;
-  }
-
-  moveit::core::RobotStatePtr robot_state = std::make_shared<moveit::core::RobotState>(robot_model);
-  robot_state->setToDefaultValues();
-  const moveit::core::JointModelGroup* jmg = robot_model->getJointModelGroup(arm_group_name_);
-  if (!jmg) {
-    RCLCPP_ERROR(node_->get_logger(), "Joint Model Group '%s' not found.", arm_group_name_.c_str());
-    return;
-  }
-
-  std::vector<std::vector<double>> joint_waypoints;
-  joint_waypoints.reserve(trajectory.size());
-
-  for (size_t i = 0; i < trajectory.size(); ++i) {
-    bool found_ik = false;
-    constexpr int max_attempts = 10;
-    constexpr double per_attempt_timeout = 0.01;
-    for (int attempt = 0; attempt < max_attempts && !found_ik; ++attempt) {
-      found_ik = robot_state->setFromIK(jmg, trajectory[i], tip_frame_, per_attempt_timeout);
-    }
-    if (!found_ik) {
-      RCLCPP_ERROR(node_->get_logger(), "IK failed for waypoint %zu", i);
-      return;
-    }
-    std::vector<double> joints_now;
-    robot_state->copyJointGroupPositions(jmg, joints_now);
-    joint_waypoints.push_back(joints_now);
-  }
-
-  robot_trajectory::RobotTrajectory rt(robot_model, arm_group_name_);
-  double time_so_far = 0.0;
-
-  for (size_t i = 0; i < joint_waypoints.size(); ++i) {
-    robot_state->setJointGroupPositions(jmg, joint_waypoints[i]);
-    rt.addSuffixWayPoint(*robot_state, time_so_far);
-
-    if (i + 1 < joint_waypoints.size()) {
-      // naive distance between consecutive points
-      double dx = trajectory[i+1].position.x - trajectory[i].position.x;
-      double dy = trajectory[i+1].position.y - trajectory[i].position.y;
-      double dz = trajectory[i+1].position.z - trajectory[i].position.z;
-      double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-
-      double speed = std::sqrt(velocities[i].linear.x*velocities[i].linear.x +
-                               velocities[i].linear.y*velocities[i].linear.y +
-                               velocities[i].linear.z*velocities[i].linear.z);
-      if (speed < 1e-6) speed = 0.01; // avoid zero
-      double dt = dist / speed;
-      time_so_far += dt;
-    }
-  }
-
-  trajectory_processing::IterativeParabolicTimeParameterization iptp;
-  if (!iptp.computeTimeStamps(rt, 0.7, 0.7)) {
-    RCLCPP_ERROR(node_->get_logger(), "Time parameterization failed");
-    return;
-  }
-
-  moveit_msgs::msg::RobotTrajectory robot_traj_msg;
-  rt.getRobotTrajectoryMsg(robot_traj_msg);
-
-  RCLCPP_INFO(node_->get_logger(),
-    "Trajectory with velocities was created with %zu waypoints", joint_waypoints.size());
+  planAndExecute(single_target, 0.5, 0.5, 0.01);
 }
 
-void TaskBuilder::feedbackMove()
+void TaskBuilder::feedbackMove(const std::string& pose_topic)
 {
-  RCLCPP_INFO(node_->get_logger(), "[feedback_move] Executing feedback-based move");
-  // This is highly application-specific. Not implemented here.
+  RCLCPP_INFO(node_->get_logger(), "[feedbackMove] Subscribing to: %s", pose_topic.c_str());
+
+  feedback_sub_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
+      pose_topic, 
+      10, 
+      std::bind(&TaskBuilder::feedbackPoseCallback, this, std::placeholders::_1));
+
+  rclcpp::Time start_time = node_->now();
+  while ((node_->now() - start_time).seconds() < 10.0) {
+    rclcpp::spin_some(node_);
+  }
+
+  RCLCPP_INFO(node_->get_logger(), 
+              "feedback_move: done waiting for new poses. Unsubscribing from %s.",
+              pose_topic.c_str());
+
+  feedback_sub_.reset();
 }
 
 void TaskBuilder::attachObject(const std::string& object_name, const std::string& link_name)
@@ -1032,13 +883,57 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
 void TaskBuilder::gripperClose()
 {
   RCLCPP_INFO(node_->get_logger(), "[gripper_close] Called");
-  // e.g., MoveTo with a "gripper" group and "closed" joint positions
+  // Implement gripper-close action here.
 }
 
 void TaskBuilder::gripperOpen()
 {
   RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
-  // e.g., MoveTo with a "gripper" group and "open" joint positions
+  // Implement gripper-open action here.
+}
+
+void TaskBuilder::collaborativeMove(const std::string& torque_topic, const std::string& record_filename)
+{
+  RCLCPP_INFO(node_->get_logger(), "[collaborativeMove] torque_topic=%s, record=%s",
+              torque_topic.c_str(), record_filename.c_str());
+
+  torque_sub_ = node_->create_subscription<std_msgs::msg::String>(
+      torque_topic, 10,
+      std::bind(&TaskBuilder::torqueFeedbackCallback, this, std::placeholders::_1));
+
+  rclcpp::Time start_time = node_->now();
+  while ((node_->now() - start_time).seconds() < 5.0) {
+    rclcpp::spin_some(node_);
+    geometry_msgs::msg::Pose dummy_pose;
+    dummy_pose.position.x = 0.0;
+    dummy_pose.position.y = 0.0;
+    dummy_pose.position.z = 0.0;
+    dummy_pose.orientation.x = 0.0;
+    dummy_pose.orientation.y = 0.0;
+    dummy_pose.orientation.z = 0.0;
+    dummy_pose.orientation.w = 1.0;
+    recordPose(dummy_pose, record_filename);
+    rclcpp::sleep_for(std::chrono::milliseconds(100));
+  }
+  RCLCPP_INFO(node_->get_logger(), "collaborative_move: finished. Motion was recorded to %s.", record_filename.c_str());
+}
+
+void TaskBuilder::torqueFeedbackCallback(const std_msgs::msg::String::SharedPtr msg)
+{
+  RCLCPP_INFO(node_->get_logger(), "[torqueFeedbackCallback] Received torque feedback: %s", msg->data.c_str());
+}
+
+void TaskBuilder::recordPose(const geometry_msgs::msg::Pose& pose, const std::string& filename)
+{
+  std::ofstream outfile(filename, std::ios::app);
+  if (!outfile.is_open()) {
+    RCLCPP_ERROR(node_->get_logger(), "Could not open file %s for recording pose", filename.c_str());
+    return;
+  }
+  outfile << pose.position.x << "," << pose.position.y << "," << pose.position.z << ","
+          << pose.orientation.x << "," << pose.orientation.y << "," << pose.orientation.z << "," << pose.orientation.w << "\n";
+  outfile.close();
+  RCLCPP_INFO(node_->get_logger(), "Recorded pose to %s", filename.c_str());
 }
 
 bool TaskBuilder::initTask()
@@ -1081,4 +976,157 @@ bool TaskBuilder::executeTask()
   }
   RCLCPP_INFO(node_->get_logger(), "Task execution SUCCESS!");
   return true;
+}
+
+bool TaskBuilder::planAndExecute(const std::vector<geometry_msgs::msg::PoseStamped>& waypoints,
+                                 double velocity_scale,
+                                 double accel_scale,
+                                 double pose_tolerance)
+{
+  if (!move_group_) {
+    RCLCPP_ERROR(node_->get_logger(), "MoveGroupInterface not initialized!");
+    return false;
+  }
+  std::vector<geometry_msgs::msg::Pose> poses;
+  for (const auto& wp : waypoints) {
+    poses.push_back(wp.pose);
+  }
+  moveit_msgs::msg::RobotTrajectory trajectory;
+  double fraction = move_group_->computeCartesianPath(poses, 0.01, 0.0, trajectory);
+  if (fraction < 0.9) {
+    RCLCPP_ERROR(node_->get_logger(), "Cartesian path planning failed (only achieved %.2f%% of path)", fraction * 100.0);
+    return false;
+  }
+  move_group_->setMaxVelocityScalingFactor(velocity_scale);
+  move_group_->setMaxAccelerationScalingFactor(accel_scale);
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  plan.trajectory_ = trajectory;
+  bool success = (move_group_->execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+  if (!success) {
+    RCLCPP_ERROR(node_->get_logger(), "Execution of Cartesian path failed");
+  }
+  return success;
+}
+
+std::vector<geometry_msgs::msg::PoseStamped> TaskBuilder::parseCsv(const std::string& csv_file)
+{
+  std::vector<geometry_msgs::msg::PoseStamped> waypoints;
+  std::ifstream infile(csv_file);
+  if (!infile.is_open()) {
+    RCLCPP_ERROR(node_->get_logger(), "Could not open CSV file: %s", csv_file.c_str());
+    return waypoints;
+  }
+  std::string line;
+  while (std::getline(infile, line)) {
+    if (line.empty())
+      continue;
+    std::istringstream ss(line);
+    std::string token;
+    std::vector<double> values;
+    while (std::getline(ss, token, ',')) {
+      try {
+        values.push_back(std::stod(token));
+      } catch (...) {
+        RCLCPP_WARN(node_->get_logger(), "Invalid number in CSV file: %s", token.c_str());
+      }
+    }
+    if (values.size() < 3)
+      continue;
+    geometry_msgs::msg::PoseStamped pose_stamped;
+    pose_stamped.header.frame_id = "world";
+    pose_stamped.header.stamp = node_->now();
+    pose_stamped.pose.position.x = values[0];
+    pose_stamped.pose.position.y = values[1];
+    pose_stamped.pose.position.z = values[2];
+    pose_stamped.pose.orientation.x = 0;
+    pose_stamped.pose.orientation.y = 0;
+    pose_stamped.pose.orientation.z = 0;
+    pose_stamped.pose.orientation.w = 1;
+    waypoints.push_back(pose_stamped);
+  }
+  infile.close();
+  return waypoints;
+}
+
+void TaskBuilder::parseGcode(const std::string& gcode_file,
+                  std::vector<geometry_msgs::msg::PoseStamped>& out_poses)
+{
+  RCLCPP_WARN(node_->get_logger(), "parseGcode is not implemented");
+}
+
+void TaskBuilder::parseSplineFile(const std::string& step_file,
+                       std::vector<geometry_msgs::msg::PoseStamped>& out_poses)
+{
+  RCLCPP_WARN(node_->get_logger(), "parseSplineFile is not implemented");
+}
+
+bool TaskBuilder::generateSplineTrajectory(const moveit::core::RobotModelConstPtr& robot_model,
+                                const std::vector<std::vector<double>>& joint_waypoints,
+                                moveit_msgs::msg::RobotTrajectory& trajectory_out,
+                                double total_time,
+                                double time_step)
+{
+  RCLCPP_WARN(node_->get_logger(), "generateSplineTrajectory is not implemented");
+  return false;
+}
+
+std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& gcode_file, const std::string& mode)
+{
+  RCLCPP_WARN(node_->get_logger(), "gcodeLoad is not implemented, returning empty vector");
+  return std::vector<geometry_msgs::msg::Pose>();
+}
+
+std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& step_file)
+{
+  RCLCPP_WARN(node_->get_logger(), "stepLoad is not implemented, returning empty vector");
+  return std::vector<geometry_msgs::msg::Pose>();
+}
+
+void TaskBuilder::scanLine(const geometry_msgs::msg::Point& start,
+                           const geometry_msgs::msg::Point& end)
+{
+  RCLCPP_INFO(node_->get_logger(), "[scanLine] from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f)",
+              start.x, start.y, start.z, end.x, end.y, end.z);
+
+  geometry_msgs::msg::PoseStamped poseA;
+  poseA.header.frame_id = "base_link";
+  poseA.pose.position = start;
+  poseA.pose.orientation.x = 0.0;
+  poseA.pose.orientation.y = 0.0;
+  poseA.pose.orientation.z = 0.0;
+  poseA.pose.orientation.w = 1.0;
+
+  geometry_msgs::msg::PoseStamped poseB = poseA;
+  poseB.pose.position = end;
+
+  std::vector<geometry_msgs::msg::PoseStamped> path;
+  path.push_back(poseA);
+  path.push_back(poseB);
+
+  planAndExecute(path, 0.5, 0.5, 0.01);
+
+  RCLCPP_INFO(node_->get_logger(), "Scan Finish");
+}
+
+void TaskBuilder::calibrateCamera(double x, double y, double z)
+{
+  RCLCPP_INFO(node_->get_logger(), "[calibrateCamera] target = (%.2f,%.2f,%.2f) in base_link", x, y, z);
+
+  std::vector<geometry_msgs::msg::PoseStamped> path;
+  double radius = 0.05;
+  for (int i = 0; i < 8; ++i) {
+    double angle = 2.0 * M_PI * (static_cast<double>(i) / 8.0);
+    geometry_msgs::msg::PoseStamped p;
+    p.header.frame_id = "base_link";
+    p.pose.position.x = x + radius * std::cos(angle);
+    p.pose.position.y = y + radius * std::sin(angle);
+    p.pose.position.z = z;
+    p.pose.orientation.x = 0.0;
+    p.pose.orientation.y = 0.0;
+    p.pose.orientation.z = 0.0;
+    p.pose.orientation.w = 1.0;
+    path.push_back(p);
+  }
+
+  planAndExecute(path, 0.2, 0.2, 0.01);
 }

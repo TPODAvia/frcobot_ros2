@@ -1,3 +1,5 @@
+// task_generator.cpp
+
 #include <rclcpp/rclcpp.hpp>
 #include <iostream>
 #include <string>
@@ -402,25 +404,112 @@ static void savePosesToFile(const std::string& filename, const std::vector<geome
  * Example helper function to linearly interpolate between two poses.
  * You might want a more sophisticated interpolation (e.g., SLERP for orientation).
  */
-static geometry_msgs::msg::Pose interpolatePose(
-    const geometry_msgs::msg::Pose& start,
-    const geometry_msgs::msg::Pose& end,
-    double t)
+static geometry_msgs::msg::Pose interpolatePose(const geometry_msgs::msg::Pose & start,
+                                                const geometry_msgs::msg::Pose & end,
+                                                double t)
 {
-  geometry_msgs::msg::Pose result;
-  // Linear interpolation for position
-  result.position.x = start.position.x + t * (end.position.x - start.position.x);
-  result.position.y = start.position.y + t * (end.position.y - start.position.y);
-  result.position.z = start.position.z + t * (end.position.z - start.position.z);
-
-  // Linear interpolation for orientation (not SLERP, just naive approach)
-  result.orientation.x = start.orientation.x + t * (end.orientation.x - start.orientation.x);
-  result.orientation.y = start.orientation.y + t * (end.orientation.y - start.orientation.y);
-  result.orientation.z = start.orientation.z + t * (end.orientation.z - start.orientation.z);
-  result.orientation.w = start.orientation.w + t * (end.orientation.w - start.orientation.w);
-
-  return result;
+  geometry_msgs::msg::Pose p;
+  p.position.x = start.position.x + t*(end.position.x - start.position.x);
+  p.position.y = start.position.y + t*(end.position.y - start.position.y);
+  p.position.z = start.position.z + t*(end.position.z - start.position.z);
+  // For simplicity, linearly interpolate orientation (note: a proper solution would use SLERP)
+  p.orientation.x = start.orientation.x + t*(end.orientation.x - start.orientation.x);
+  p.orientation.y = start.orientation.y + t*(end.orientation.y - start.orientation.y);
+  p.orientation.z = start.orientation.z + t*(end.orientation.z - start.orientation.z);
+  p.orientation.w = start.orientation.w + t*(end.orientation.w - start.orientation.w);
+  return p;
 }
+
+// Reads a CSV file (each nonempty line: x,y,z,qx,qy,qz,qw) and returns a vector of poses.
+// static std::vector<geometry_msgs::msg::Pose> parseCSVToPoses(const std::string & filename)
+// {
+//   std::vector<geometry_msgs::msg::Pose> poses;
+//   std::ifstream file(filename);
+//   if (!file.is_open()) {
+//     std::cerr << "Error opening CSV file: " << filename << std::endl;
+//     return poses;
+//   }
+//   std::string line;
+//   while (std::getline(file, line))
+//   {
+//     if(line.empty() || line[0]=='#')
+//       continue;
+//     std::istringstream ss(line);
+//     std::string token;
+//     std::vector<double> values;
+//     while (std::getline(ss, token, ',')) {
+//       try { values.push_back(std::stod(token)); } catch(...) {}
+//     }
+//     if (values.size() >= 7)
+//     {
+//       geometry_msgs::msg::Pose p;
+//       p.position.x = values[0];
+//       p.position.y = values[1];
+//       p.position.z = values[2];
+//       p.orientation.x = values[3];
+//       p.orientation.y = values[4];
+//       p.orientation.z = values[5];
+//       p.orientation.w = values[6];
+//       poses.push_back(p);
+//     }
+//   }
+//   return poses;
+// }
+
+// Compute a “look–at” quaternion from point “from” to point “target”.
+// (Assumes world up = [0,0,1].)
+// static geometry_msgs::msg::Quaternion computeLookAtQuaternion(const geometry_msgs::msg::Point & from,
+//                                                               const geometry_msgs::msg::Point & target)
+// {
+//   double dx = target.x - from.x;
+//   double dy = target.y - from.y;
+//   double dz = target.z - from.z;
+//   Eigen::Vector3d forward(dx, dy, dz);
+//   if (forward.norm() < 1e-6)
+//     forward = Eigen::Vector3d(0, 0, 1);
+//   else
+//     forward.normalize();
+//   Eigen::Vector3d up(0, 0, 1);
+//   Eigen::Vector3d right = forward.cross(up);
+//   if (right.norm() < 1e-6)
+//     right = Eigen::Vector3d(1, 0, 0);
+//   else
+//     right.normalize();
+//   up = right.cross(forward);
+//   up.normalize();
+//   Eigen::Matrix3d R;
+//   R.col(0) = right;
+//   R.col(1) = up;
+//   R.col(2) = forward;
+//   Eigen::Quaterniond q(R);
+//   geometry_msgs::msg::Quaternion q_msg;
+//   q_msg.x = q.x();
+//   q_msg.y = q.y();
+//   q_msg.z = q.z();
+//   q_msg.w = q.w();
+//   return q_msg;
+// }
+
+// // calibrateCamera: moves the end–effector along an arbitrary path while always pointing at a fixed target.
+// void TaskBuilder::calibrateCamera(const geometry_msgs::msg::Point & target_point)
+// {
+//   RCLCPP_INFO(node_->get_logger(), "[calibrate_camera] Starting camera calibration");
+//   std::vector<geometry_msgs::msg::Pose> traj;
+//   const int steps = 20;
+//   double radius = 0.1;  // 10 cm circle
+//   for (int i = 0; i < steps; ++i)
+//   {
+//     double angle = 2 * M_PI * i / steps;
+//     geometry_msgs::msg::Pose p;
+//     p.position.x = target_point.x + radius * std::cos(angle);
+//     p.position.y = target_point.y + radius * std::sin(angle);
+//     p.position.z = target_point.z;  // Keep same z for simplicity
+//     // Compute orientation so that the end–effector “looks at” target_point.
+//     p.orientation = computeLookAtQuaternion(p.position, target_point);
+//     traj.push_back(p);
+//   }
+//   // trajectoryMove(traj);
+// }
 
 /**
  * A simple structure representing a single parsed G-code command.
@@ -1202,7 +1291,7 @@ int main(int argc, char** argv)
           trajectory.push_back(pose);
         }
         // Original function call
-        builder.trajectoryMove(trajectory);
+        // builder.trajectoryMove(trajectory);
       }
       else
       {
@@ -1239,7 +1328,7 @@ int main(int argc, char** argv)
         }
 
         // Call the new variant that accepts velocities
-        builder.trajectoryMoveV(poses, velocities);
+        // builder.trajectoryMoveV(poses, velocities);
       }
       break;
     }
@@ -1247,7 +1336,7 @@ int main(int argc, char** argv)
     case CommandKind::FEEDBACK_MOVE:
     {
       // feedback_move
-      builder.feedbackMove();
+      // builder.feedbackMove();
       break;
     }
 
@@ -1413,7 +1502,7 @@ int main(int argc, char** argv)
       }
 
       // Perform the trajectory
-      builder.trajectoryMove(scan_trajectory);
+      // builder.trajectoryMove(scan_trajectory);
       break;
     }
 
@@ -1461,7 +1550,7 @@ int main(int argc, char** argv)
         calibration_poses.push_back(p);
       }
 
-      builder.trajectoryMove(calibration_poses);
+      // builder.trajectoryMove(calibration_poses);
       break;
     }
 
@@ -1494,7 +1583,7 @@ int main(int argc, char** argv)
       savePosesToFile(debug_file, gcode_poses);
       RCLCPP_INFO(node->get_logger(), "G-code poses saved to %s", debug_file.c_str());
 
-      builder.trajectoryMove(gcode_poses);
+      // builder.trajectoryMove(gcode_poses);
       break;
     }
 
@@ -1523,7 +1612,7 @@ int main(int argc, char** argv)
       // RCLCPP_INFO(node->get_logger(), "STEP curve poses saved to %s", debug_file.c_str());
 
       // Pass to the normal trajectory move
-      builder.trajectoryMove(curve_poses);
+      // builder.trajectoryMove(curve_poses);
       break;
     }
 

@@ -6,6 +6,7 @@ Tutorial of installing and uasage of ROS2 API, please refer to the Fair document
 Version histroy:
 2023.7.18 V1.0
 
+```bash
 
 https://github.com/fzi-forschungszentrum-informatik/ros2_ros_bt_py.git
 
@@ -14,7 +15,9 @@ https://github.com/moveit/moveit_task_constructor.git
 
 git submodule add https://github.com/ros-drivers/velodyne colcon_ws/src/OrcaRL2/localization/velodyne
 
+https://github.com/fzi-forschungszentrum-informatik/ros2_ros_bt_py.git
 
+https://github.com/moveit/moveit_task_constructor.git
 $ git config --global user.name "John Doe" $ git config --global user.email hejhe@gmail.com
 
 git config --global user.name "FIRST_NAME LAST_NAME"
@@ -33,3 +36,5 @@ rosdep install --from-paths src --ignore-src -r -y
 export MAKEFLAGS="-j2"
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 export RCUTILS_COLORIZED_OUTPUT=1
+
+```

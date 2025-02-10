@@ -1,5 +1,5 @@
 #include "task_builder.hpp"
-
+#include <moveit/robot_state/robot_state.h>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <filesystem>
 #include <fstream>
@@ -7,8 +7,90 @@
 #include <thread>
 #include <sstream>
 #include <cmath>
+#include <cctype>
+#include <algorithm>
 
 namespace fs = std::filesystem;
+
+namespace {
+// --- Helper structures and functions for G-code parsing ---
+struct GCodeCommand
+{
+  std::string original_line;
+  std::string code;
+  std::map<char, double> params;
+  std::string comment;
+};
+
+std::string extractCommandToken(const std::string& token)
+{
+  if (token.empty())
+    return "";
+  char c = std::toupper(token[0]);
+  if (c == 'G' || c == 'M' || c == 'T')
+    return token;
+  return "";
+}
+
+GCodeCommand parseGCodeLine(const std::string& raw_line)
+{
+  GCodeCommand cmd;
+  cmd.original_line = raw_line;
+  std::string line = raw_line;
+  auto sc_pos = line.find(';');
+  if (sc_pos != std::string::npos)
+  {
+    cmd.comment = line.substr(sc_pos + 1);
+    line = line.substr(0, sc_pos);
+  }
+  auto openParen = line.find('(');
+  auto closeParen = line.find(')', openParen + 1);
+  if (openParen != std::string::npos && closeParen != std::string::npos)
+  {
+    std::string parenComment = line.substr(openParen + 1, closeParen - openParen - 1);
+    if (!cmd.comment.empty())
+      cmd.comment += " | ";
+    cmd.comment += parenComment;
+    line.erase(openParen, closeParen - openParen + 1);
+  }
+  auto trimSpace = [](std::string & s)
+  {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch){ return !std::isspace(ch); }));
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch){ return !std::isspace(ch); }).base(), s.end());
+  };
+  trimSpace(line);
+  std::stringstream ss(line);
+  std::string token;
+  bool firstTokenProcessed = false;
+  while (ss >> token)
+  {
+    if (!firstTokenProcessed)
+    {
+      std::string possibleCmd = extractCommandToken(token);
+      if (!possibleCmd.empty())
+      {
+        cmd.code = possibleCmd;
+        firstTokenProcessed = true;
+        continue;
+      }
+      firstTokenProcessed = true;
+    }
+    if (token.size() >= 2)
+    {
+      char paramLetter = std::toupper(token[0]);
+      std::string valStr = token.substr(1);
+      try
+      {
+        double value = std::stod(valStr);
+        cmd.params[paramLetter] = value;
+      }
+      catch(...) { /* ignore non-numeric tokens */ }
+    }
+  }
+  return cmd;
+}
+} // end anonymous namespace
+
 
 TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
                          const std::string& arm_group_name,
@@ -301,10 +383,6 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     return;
   }
 }
-
-// ---------------------------------------------------------------------
-// The rest of your methods
-// ---------------------------------------------------------------------
 
 void TaskBuilder::printRobotParams() const
 {
@@ -1072,14 +1150,177 @@ bool TaskBuilder::generateSplineTrajectory(const moveit::core::RobotModelConstPt
 
 std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& gcode_file, const std::string& mode)
 {
-  RCLCPP_WARN(node_->get_logger(), "gcodeLoad is not implemented, returning empty vector");
-  return std::vector<geometry_msgs::msg::Pose>();
+  std::vector<GCodeCommand> all_commands;
+  std::ifstream file(gcode_file);
+  if (!file.is_open())
+  {
+    RCLCPP_ERROR(node_->get_logger(), "Failed to open G-code file: %s", gcode_file.c_str());
+    return {};
+  }
+  std::string raw_line;
+  while (std::getline(file, raw_line))
+  {
+    if (raw_line.empty())
+      continue;
+    GCodeCommand cmd = parseGCodeLine(raw_line);
+    if (!cmd.code.empty() || !cmd.params.empty())
+      all_commands.push_back(cmd);
+  }
+  file.close();
+
+  double x = 0.0, y = 0.0, z = 0.0;
+  std::vector<geometry_msgs::msg::Pose> path;
+  for (auto& c : all_commands)
+  {
+    if (c.code == "G0" || c.code == "G1")
+    {
+      if (c.params.find('X') != c.params.end())
+        x = c.params.at('X');
+      if (c.params.find('Y') != c.params.end())
+        y = c.params.at('Y');
+      if (c.params.find('Z') != c.params.end())
+        z = c.params.at('Z');
+
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = x;
+      pose.position.y = y;
+      pose.position.z = z;
+      pose.orientation.x = 0.0;
+      pose.orientation.y = 0.0;
+      pose.orientation.z = 0.0;
+      pose.orientation.w = 1.0;
+      path.push_back(pose);
+    }
+  }
+  return path;
 }
 
 std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& step_file)
 {
-  RCLCPP_WARN(node_->get_logger(), "stepLoad is not implemented, returning empty vector");
-  return std::vector<geometry_msgs::msg::Pose>();
+  std::vector<geometry_msgs::msg::Pose> result;
+  std::ifstream file(step_file);
+  if (!file.is_open())
+  {
+    RCLCPP_ERROR(node_->get_logger(), "stepLoad: could not open file: %s", step_file.c_str());
+    return result;
+  }
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(file, line))
+    lines.push_back(line);
+  file.close();
+
+  std::string spline_ref;
+  for (const auto &l : lines)
+  {
+    if (l.find("B_SPLINE_CURVE_WITH_KNOTS") != std::string::npos)
+    {
+      spline_ref = l;
+      break;
+    }
+  }
+  if (spline_ref.empty())
+  {
+    RCLCPP_ERROR(node_->get_logger(), "No B_SPLINE_CURVE_WITH_KNOTS found in %s", step_file.c_str());
+    return result;
+  }
+  std::vector<std::string> cartesian_refs;
+  {
+    auto startPos = spline_ref.find("(#");
+    if (startPos == std::string::npos)
+    {
+      RCLCPP_ERROR(node_->get_logger(), "Could not parse control points list.");
+      return result;
+    }
+    auto endPos = spline_ref.find(")", startPos);
+    if (endPos == std::string::npos)
+    {
+      RCLCPP_ERROR(node_->get_logger(), "Could not parse control points list (no closing parenthesis).");
+      return result;
+    }
+    std::string refs = spline_ref.substr(startPos, endPos - startPos);
+    refs.erase(std::remove(refs.begin(), refs.end(), '('), refs.end());
+    refs.erase(std::remove(refs.begin(), refs.end(), ')'), refs.end());
+    std::stringstream ss(refs);
+    std::string token;
+    while (std::getline(ss, token, ','))
+    {
+      if (!token.empty() && token.find("#") != std::string::npos)
+      {
+        while (!token.empty() && std::isspace(token.front())) token.erase(token.begin());
+        while (!token.empty() && std::isspace(token.back())) token.pop_back();
+        cartesian_refs.push_back(token);
+      }
+    }
+  }
+  if (cartesian_refs.empty())
+  {
+    RCLCPP_ERROR(node_->get_logger(), "No cartesian point references found.");
+    return result;
+  }
+  struct Point3 { double x, y, z; };
+  std::vector<Point3> control_points;
+  for (const auto &ref : cartesian_refs)
+  {
+    for (const auto &l : lines)
+    {
+      if (l.rfind(ref + "=", 0) == 0 && l.find("CARTESIAN_POINT") != std::string::npos)
+      {
+        auto cpointPos = l.find("CARTESIAN_POINT(");
+        if (cpointPos == std::string::npos)
+          continue;
+        cpointPos += std::strlen("CARTESIAN_POINT(");
+        auto secondParen = l.find("(", cpointPos);
+        if (secondParen == std::string::npos)
+          continue;
+        auto endParen = l.find(")", secondParen + 1);
+        if (endParen == std::string::npos)
+          continue;
+        std::string coords = l.substr(secondParen + 1, endParen - (secondParen + 1));
+        std::stringstream ssc(coords);
+        std::string val;
+        std::vector<double> vals;
+        while (std::getline(ssc, val, ','))
+        {
+          while (!val.empty() && std::isspace(val.front())) val.erase(val.begin());
+          while (!val.empty() && std::isspace(val.back())) val.pop_back();
+          try {
+            vals.push_back(std::stod(val));
+          } catch (...) { }
+        }
+        if (vals.size() == 3)
+          control_points.push_back({vals[0], vals[1], vals[2]});
+        break;
+      }
+    }
+  }
+  if (control_points.size() < 2)
+  {
+    RCLCPP_ERROR(node_->get_logger(), "Not enough control points to form a curve.");
+    return result;
+  }
+  int num_samples = 20;
+  for (int i = 0; i < num_samples; ++i)
+  {
+    double t = static_cast<double>(i) / (num_samples - 1);
+    double float_index = t * (control_points.size() - 1);
+    int idx0 = static_cast<int>(std::floor(float_index));
+    int idx1 = std::min(idx0 + 1, static_cast<int>(control_points.size() - 1));
+    double ratio = float_index - idx0;
+    double x = control_points[idx0].x + ratio * (control_points[idx1].x - control_points[idx0].x);
+    double y = control_points[idx0].y + ratio * (control_points[idx1].y - control_points[idx0].y);
+    double z = control_points[idx0].z + ratio * (control_points[idx1].z - control_points[idx0].z);
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = y;
+    pose.position.z = z;
+    pose.orientation.x = 0.0;
+    pose.orientation.y = 0.0;
+    pose.orientation.z = 0.0;
+    pose.orientation.w = 1.0;
+    result.push_back(pose);
+  }
+  return result;
 }
 
 void TaskBuilder::scanLine(const geometry_msgs::msg::Point& start,

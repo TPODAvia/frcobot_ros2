@@ -1,0 +1,1 @@
+Images and additional resources is locaded here

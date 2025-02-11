@@ -47,7 +47,10 @@ def generate_launch_description():
                 # "get_robot_param",
                 # "clear_scene"
                 # "remove_object", "cylinder"
-                "spawn_object", "cylinder"
+                "remove_object", "box"
+                # "remove_object", "sphere"
+                # "remove_object", "cone"
+                # "spawn_object", "cylinder"
                 # "spawn_object", "cylinder", "1", "1", "1", "0", "0", "0", "1",    "0.1", "0.02", "0.0"
                 # "spawn_object", "box",      "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.05", "0.05"
                 # "spawn_object", "sphere",   "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.0", "0.0"

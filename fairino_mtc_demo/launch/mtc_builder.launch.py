@@ -10,7 +10,7 @@ robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
 tip_frame = "wrist3_link"
 exec_task = True
-save_json = True
+save_json = False
 reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
 reserved_3 = False # this could be for tolerance
@@ -44,16 +44,16 @@ def generate_launch_description():
             str(reserved_2).lower(),
             str(reserved_3).lower(),
             str(reserved_4).lower(),
-                # "get_robot_param",
-                # "clear_scene"
+                # "get_robot_param"
+                # "clear_scene".
                 # "remove_object", "cylinder"
-                "remove_object", "box"
+                # "remove_object", "box"
                 # "remove_object", "sphere"
                 # "remove_object", "cone"
                 # "spawn_object", "cylinder"
-                # "spawn_object", "cylinder", "1", "1", "1", "0", "0", "0", "1",    "0.1", "0.02", "0.0"
+                # "spawn_object", "cylinder", "0.25", "0.25", "0.45", "1", "0", "0", "0",    "0.1", "0.02", "0.0"
                 # "spawn_object", "box",      "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.05", "0.05"
-                # "spawn_object", "sphere",   "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.0", "0.0"
+                # "spawn_object", "sphere",   "1", "1", "1", "1", "0", "0", "0",    "0.05", "0.0", "0.0"
                 # "spawn_object", "cone",     "1", "1", "1", "0", "0", "0", "1",    "0.15", "0.05", "0.0"
                 # "attach_object", "cylinder", tip_frame
                 # "detach_object", "cylinder", tip_frame
@@ -75,11 +75,11 @@ def generate_launch_description():
                 # "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
 
                 # The functionalities below are not working
-                # "trajectory_move", file
+                # "trajectory_move", trajectoy_file
                 # "feedback_move", "mode" 
                 # "collaborative_move", "mode"
-                # "scan_line"
-                # "calibate_camera"
+                # "scan_line", "0.5", "0.1", "0.5", "0", "0", "0"
+                # "calibate_camera", "0.5", "0.1", "0.5"
                 # "gcode_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"
                 # "step_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/model2.stp"
             ]         

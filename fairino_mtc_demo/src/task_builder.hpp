@@ -42,6 +42,16 @@ namespace mtc = moveit::task_constructor;
 class TaskBuilder
 {
 public:
+
+    struct StoredObjectData
+    {
+    geometry_msgs::msg::Pose pose;       // position + orientation
+    std::string shape;                   // e.g. "cylinder", "box", "sphere", ...
+    std::vector<double> dimensions;      // shape-dependent, e.g. [height, radius] or [x,y,z]
+    std::string color;                   // e.g. "#FF0000" or "red" (future usage)
+    double alpha;                        // transparency: 0.0 (invisible) -> 1.0 (opaque)
+    };
+
     /**
      * Constructor that sets the node and also allows you to specify which group
      * and tip frame you’ll use in the MTC pipeline.

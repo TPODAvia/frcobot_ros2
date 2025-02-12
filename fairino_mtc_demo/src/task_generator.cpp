@@ -348,11 +348,11 @@ int main(int argc, char** argv)
 		std::cout << "argv[" << i << "]: " << argv[i] << std::endl;
 	}
 
-	// Expected usage:
+	// Expected Syntax Error! Usage:
 	// task_generator <arm_group_name> <tip_frame> <command> [arguments...]
 	if (argc < 8) {
 		RCLCPP_ERROR(node->get_logger(),
-					"Usage: task_generator <arm_group_name> <tip_frame> <command> [arguments...]");
+					"Syntax Error! Usage: task_generator <arm_group_name> <tip_frame> <command> [arguments...]");
 		rclcpp::shutdown();
 		return 1;
 	}
@@ -389,7 +389,7 @@ int main(int argc, char** argv)
 		case CommandKind::REMOVE_OBJECT:
 		{
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: remove_object <object_name>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: remove_object <object_name>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -401,7 +401,7 @@ int main(int argc, char** argv)
 		{
 			if (argc != (default_variables + 1) && argc != (default_variables + 11)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
+							"Syntax Error! Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -423,7 +423,7 @@ int main(int argc, char** argv)
 		case CommandKind::CHOOSE_PIPELINE:
 		{
 			if (argc != (default_variables + 2)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: choose_pipeline <pipeline_name> <planner_id>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: choose_pipeline <pipeline_name> <planner_id>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -436,8 +436,12 @@ int main(int argc, char** argv)
 
 		case CommandKind::JOINTS_MOVE:
 		{
-			if (argc != (default_variables + 2)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
+			std::vector<double> joint_values;
+			if (argc != (default_variables + 1)) {
+				builder.jointsMove(joint_values);
+			}
+			if (argc != (default_variables + 6)) {
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -449,7 +453,6 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			// Assuming we have 6 joints
-			std::vector<double> joint_values;
 			for (int i = (task_variables + 1); i < (task_variables + 7); ++i)
 			joint_values.push_back(std::stod(argv[i]));
 			builder.jointsMove(joint_values);
@@ -470,7 +473,7 @@ int main(int argc, char** argv)
 				std::string tip      = argv[task_variables + 2];
 				std::string target   = argv[task_variables + 3];
 				builder.absoluteMove(frame_id, tip, target);
-			} else if (argc == (default_variables + 10)) {
+			} else if (argc == (default_variables + 8)) {
 				// Check if argv[11] to argv[17] are all numeric values
 				bool numeric_args = true;
 				for (int i = (task_variables + 2); i <= (task_variables + 6); ++i) {
@@ -496,7 +499,7 @@ int main(int argc, char** argv)
 				builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
 			} else {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
+							"Syntax Error! Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
 							"absolute_move <frame_id> <x> <y> <z> <rx> <ry> <rz> <rw>");
 				rclcpp::shutdown();
 				return 1;
@@ -514,7 +517,7 @@ int main(int argc, char** argv)
 			}
 			if (argc != (default_variables + 8)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>");
+							"Syntax Error! Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -534,7 +537,7 @@ int main(int argc, char** argv)
 		{
 			if (argc != (default_variables + 4)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: trajectory_move <csv_file> <velocity_scale> <accel_scale> <pose_tolerance>");
+							"Syntax Error! Usage: trajectory_move <csv_file> <velocity_scale> <accel_scale> <pose_tolerance>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -548,7 +551,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::FEEDBACK_MOVE:
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: feedback_move <pose_topic>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: feedback_move <pose_topic>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -558,7 +561,7 @@ int main(int argc, char** argv)
 		case CommandKind::COLLABORATIVE_MOVE:
 			if (argc != (default_variables + 2)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: collaborative_move <torque_topic> <record_filename>");
+							"Syntax Error! Usage: collaborative_move <torque_topic> <record_filename>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -567,7 +570,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::GRIPPER_CLOSE:
 			if (argc != (default_variables)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: gripper_close");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_close");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -576,7 +579,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::GRIPPER_OPEN:
 			if (argc != default_variables) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: gripper_open");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_open");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -584,8 +587,8 @@ int main(int argc, char** argv)
 		break;
 
 		case CommandKind::ATTACH_OBJECT:
-			if (argc != default_variables) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: attach_object <object_name> <link_name>");
+			if (argc != default_variables + 2) {
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: attach_object <object_name> <link_name>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -594,7 +597,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::DETACH_OBJECT:
 			if (argc != (default_variables + 2)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: detach_object <object_name> <link_name>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: detach_object <object_name> <link_name>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -604,7 +607,7 @@ int main(int argc, char** argv)
 		case CommandKind::DELETE_JSON_SIM_CONTENT:
 		{
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_sim_content <filename>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: delete_json_sim_content <filename>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -617,7 +620,7 @@ int main(int argc, char** argv)
 		case CommandKind::DELETE_JSON_TEMP:
 		{
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_temp <directory>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: delete_json_temp <directory>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -630,7 +633,7 @@ int main(int argc, char** argv)
 		case CommandKind::CHECK_JSON_FILES:
 		{
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: check_json_files <directory>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: check_json_files <directory>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -644,7 +647,7 @@ int main(int argc, char** argv)
 		{
 			if (argc != (default_variables + 7)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: scan_line <x1> <y1> <z1> <x2> <y2> <z2> <num_steps>");
+							"Syntax Error! Usage: scan_line <x1> <y1> <z1> <x2> <y2> <z2> <num_steps>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -667,7 +670,7 @@ int main(int argc, char** argv)
 		{
 			if (argc != (default_variables + 3)) {
 				RCLCPP_ERROR(node->get_logger(),
-							"Usage: calibrate_camera <x> <y> <z>");
+							"Syntax Error! Usage: calibrate_camera <x> <y> <z>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -683,7 +686,7 @@ int main(int argc, char** argv)
 		{
 			// Expect: gcode_load <gcode_filename>
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: gcode_load <gcode_filename>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gcode_load <gcode_filename>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -705,7 +708,7 @@ int main(int argc, char** argv)
 		{
 			// Expect: step_load <step_filename>
 			if (argc != (default_variables + 1)) {
-				RCLCPP_ERROR(node->get_logger(), "Usage: step_load <step_filename>");
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: step_load <step_filename>");
 				rclcpp::shutdown();
 				return 1;
 			}

@@ -486,47 +486,77 @@ void TaskBuilder::clearScene()
     }
 }
 
-std::map<std::string, geometry_msgs::msg::Pose> TaskBuilder::loadObjectLocations(const std::string& file_path)
+// If you want to store each object in a more detailed structure:
+static std::map<std::string, TaskBuilder::StoredObjectData> loadAllObjectData(const std::string& file_path)
 {
-    std::map<std::string, geometry_msgs::msg::Pose> object_map;
+    std::map<std::string, TaskBuilder::StoredObjectData> objects_map;
 
     if (!fs::exists(file_path))
-        return object_map;  // return empty if file doesn't exist yet
+        return objects_map;  // return empty if no file yet
 
     try {
-        YAML::Node yaml_root = YAML::LoadFile(file_path);
-        if (!yaml_root["objects"]) 
-        return object_map;
+        YAML::Node root = YAML::LoadFile(file_path);
+        if (!root["objects"]) 
+        return objects_map;
 
-        YAML::Node objects_node = yaml_root["objects"];
+        YAML::Node objects_node = root["objects"];
+        // Loop over each object name
         for (auto it = objects_node.begin(); it != objects_node.end(); ++it) {
         std::string obj_name = it->first.as<std::string>();
-        YAML::Node pose_node = it->second;
+        YAML::Node data_node = it->second;
 
-        geometry_msgs::msg::Pose pose;
-        pose.position.x = pose_node["x"].as<double>();
-        pose.position.y = pose_node["y"].as<double>();
-        pose.position.z = pose_node["z"].as<double>();
-        pose.orientation.x = pose_node["rx"].as<double>();
-        pose.orientation.y = pose_node["ry"].as<double>();
-        pose.orientation.z = pose_node["rz"].as<double>();
-        pose.orientation.w = pose_node["rw"].as<double>();
+        TaskBuilder::StoredObjectData data;
+        
+        // Pose
+        if (data_node["pose"]) {
+            data.pose.position.x = data_node["pose"]["x"].as<double>();
+            data.pose.position.y = data_node["pose"]["y"].as<double>();
+            data.pose.position.z = data_node["pose"]["z"].as<double>();
+            data.pose.orientation.x = data_node["pose"]["rx"].as<double>();
+            data.pose.orientation.y = data_node["pose"]["ry"].as<double>();
+            data.pose.orientation.z = data_node["pose"]["rz"].as<double>();
+            data.pose.orientation.w = data_node["pose"]["rw"].as<double>();
+        }
 
-        object_map[obj_name] = pose;
+        // Shape
+        if (data_node["shape"]) {
+            data.shape = data_node["shape"].as<std::string>();
+        }
+
+        // Dimensions
+        if (data_node["dimensions"] && data_node["dimensions"].IsSequence()) {
+            for (auto dim : data_node["dimensions"]) {
+            data.dimensions.push_back(dim.as<double>());
+            }
+        }
+
+        // Color
+        if (data_node["color"]) {
+            data.color = data_node["color"].as<std::string>();
+        }
+
+        // Alpha
+        if (data_node["alpha"]) {
+            data.alpha = data_node["alpha"].as<double>();
+        } else {
+            data.alpha = 1.0;  // default to opaque
+        }
+
+        objects_map[obj_name] = data;
         }
     }
     catch (const std::exception& e) {
-        std::cerr << "[loadObjectLocations] Error reading file: " << e.what() << std::endl;
+        std::cerr << "[loadAllObjectData] Error reading file: " << e.what() << std::endl;
     }
-    return object_map;
+    return objects_map;
 }
 
-void TaskBuilder::saveObjectLocations(const std::string& file_path,
-                                        const std::map<std::string, geometry_msgs::msg::Pose>& object_map)
+static void saveAllObjectData(const std::string& file_path, const std::map<std::string, TaskBuilder::StoredObjectData>& objects_map)
 {
     YAML::Node root;
     YAML::Node objects_node;
 
+    // If file already exists, try to parse existing data
     if (fs::exists(file_path)) {
         try {
         root = YAML::LoadFile(file_path);
@@ -536,7 +566,8 @@ void TaskBuilder::saveObjectLocations(const std::string& file_path,
         objects_node = root["objects"];
         }
         catch (const std::exception& e) {
-        std::cerr << "[saveObjectLocations] Warning: Could not parse existing YAML. Overwriting. " << e.what() << std::endl;
+        std::cerr << "[saveAllObjectData] Warning: Could not parse existing YAML. Overwriting. " 
+                    << e.what() << std::endl;
         root = YAML::Node();
         objects_node = YAML::Node(YAML::NodeType::Map);
         }
@@ -544,27 +575,39 @@ void TaskBuilder::saveObjectLocations(const std::string& file_path,
         objects_node = YAML::Node(YAML::NodeType::Map);
     }
 
-    for (const auto& kv : object_map) {
-        const std::string& obj_name = kv.first;
-        const auto& pose = kv.second;
-        objects_node[obj_name]["x"]  = pose.position.x;
-        objects_node[obj_name]["y"]  = pose.position.y;
-        objects_node[obj_name]["z"]  = pose.position.z;
-        objects_node[obj_name]["rx"] = pose.orientation.x;
-        objects_node[obj_name]["ry"] = pose.orientation.y;
-        objects_node[obj_name]["rz"] = pose.orientation.z;
-        objects_node[obj_name]["rw"] = pose.orientation.w;
+    // Overwrite or insert data for each object
+    for (const auto& [obj_name, data] : objects_map) {
+        objects_node[obj_name]["pose"]["x"]  = data.pose.position.x;
+        objects_node[obj_name]["pose"]["y"]  = data.pose.position.y;
+        objects_node[obj_name]["pose"]["z"]  = data.pose.position.z;
+        objects_node[obj_name]["pose"]["rx"] = data.pose.orientation.x;
+        objects_node[obj_name]["pose"]["ry"] = data.pose.orientation.y;
+        objects_node[obj_name]["pose"]["rz"] = data.pose.orientation.z;
+        objects_node[obj_name]["pose"]["rw"] = data.pose.orientation.w;
+
+        objects_node[obj_name]["shape"] = data.shape;
+
+        // Save dimensions as a list: [da, db, dc...]
+        YAML::Node dims_node(YAML::NodeType::Sequence);
+        for (double d : data.dimensions) {
+        dims_node.push_back(d);
+        }
+        objects_node[obj_name]["dimensions"] = dims_node;
+
+        objects_node[obj_name]["color"] = data.color;
+        objects_node[obj_name]["alpha"] = data.alpha;
     }
 
     root["objects"] = objects_node;
 
+    // Write back to file
     try {
         std::ofstream fout(file_path);
         fout << root;
         fout.close();
     }
     catch (const std::exception& e) {
-        std::cerr << "[saveObjectLocations] Error writing file: " << e.what() << std::endl;
+        std::cerr << "[saveAllObjectData] Error writing file: " << e.what() << std::endl;
     }
 }
 
@@ -573,145 +616,229 @@ void TaskBuilder::removeObject(const std::string& object_name)
     RCLCPP_INFO(node_->get_logger(), "[remove_object] Removing %s", object_name.c_str());
     moveit::planning_interface::PlanningSceneInterface psi;
 
-    std::vector<std::string> known_objects = psi.getKnownObjectNames();
+    // Check existence
+    auto known_objects = psi.getKnownObjectNames();
     if (std::find(known_objects.begin(), known_objects.end(), object_name) == known_objects.end()) {
-        RCLCPP_INFO(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
+        RCLCPP_ERROR(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
         return;
     }
 
+    // Get the collision object from the scene
     auto object_map = psi.getObjects({object_name});
-    if (object_map.find(object_name) != object_map.end()) {
-        const moveit_msgs::msg::CollisionObject& obj_msg = object_map[object_name];
-        if (!obj_msg.primitive_poses.empty()) {
-        geometry_msgs::msg::Pose pose = obj_msg.primitive_poses[0];
-
-        std::string package_share_directory;
-        try {
-            package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
-        } catch(const std::exception& e) {
-            RCLCPP_ERROR(node_->get_logger(),
-                        "Failed to get package share directory for 'fairino_mtc_demo': %s",
-                        e.what());
-            return;
-        }
-        std::string memory_dir = package_share_directory + "/memory/";
-        if (!fs::exists(memory_dir)) {
-            try {
-            fs::create_directories(memory_dir);
-            } catch (const fs::filesystem_error& e) {
-            RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
-            return;
-            }
-        }
-        std::string object_locations_file = memory_dir + "object_locations.yaml";
-
-        auto existing_locations = loadObjectLocations(object_locations_file);
-        existing_locations[object_name] = pose;
-        saveObjectLocations(object_locations_file, existing_locations);
-        RCLCPP_INFO(node_->get_logger(), "Saved location of '%s' to %s", 
-                    object_name.c_str(), object_locations_file.c_str());
-        }
+    if (object_map.find(object_name) == object_map.end()) {
+        RCLCPP_ERROR(node_->get_logger(), "Object '%s' not found in the scene map.", object_name.c_str());
+        return;
     }
+    
+    const moveit_msgs::msg::CollisionObject& obj_msg = object_map[object_name];
 
+    // Log
+    RCLCPP_INFO(node_->get_logger(), "Object ID: %s", obj_msg.id.c_str());
+    RCLCPP_INFO(node_->get_logger(), "Frame ID: %s", obj_msg.header.frame_id.c_str());
+    RCLCPP_INFO(node_->get_logger(), "Object operation: %d", obj_msg.operation);
+
+    // Remove from the scene
     psi.removeCollisionObjects({object_name});
     RCLCPP_INFO(node_->get_logger(), "Object '%s' removed from scene.", object_name.c_str());
+
+    // --- Gather data for saving to YAML ---
+    StoredObjectData data;
+
+    // 1) Pose: either top-level pose or the first primitive pose
+    //    (Adjust depending on how you set them in spawnObject.)
+    if (!obj_msg.primitive_poses.empty()) {
+    //   data.pose = obj_msg.primitive_poses[0];
+      data.pose = obj_msg.pose;
+    }
+
+    // 2) Shape and dimensions
+    if (!obj_msg.primitives.empty()) {
+        auto& prim = obj_msg.primitives[0];
+        switch(prim.type) {
+          case shape_msgs::msg::SolidPrimitive::BOX:
+            data.shape = "box";
+            break;
+          case shape_msgs::msg::SolidPrimitive::SPHERE:
+            data.shape = "sphere";
+            break;
+          case shape_msgs::msg::SolidPrimitive::CYLINDER:
+            data.shape = "cylinder";
+            break;
+          case shape_msgs::msg::SolidPrimitive::CONE:
+            data.shape = "cone";
+            break;
+          default:
+            data.shape = "unknown";
+        }
+        // copy dimensions
+        for (double d : prim.dimensions) {
+          data.dimensions.push_back(d);
+        }
+    }
+
+    // 3) Maybe default color & alpha if you haven't set them
+    data.color = "#FFFFFF";
+    data.alpha = 1.0;
+
+    // --- Load existing data from file, add/overwrite this object ---
+    std::string package_share_directory;
+    try {
+        package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Failed to get package share directory for 'fairino_mtc_demo': %s",
+                     e.what());
+        return;
+    }
+    std::string memory_dir = package_share_directory + "/memory/";
+    if (!fs::exists(memory_dir)) {
+        try {
+            fs::create_directories(memory_dir);
+        } catch (const fs::filesystem_error& e) {
+            RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
+            return;
+        }
+    }
+    std::string object_data_file = memory_dir + "object_data.yaml";
+
+    // Load existing
+    auto current_data = loadAllObjectData(object_data_file);
+    // Insert/overwrite the current object
+    current_data[object_name] = data;
+    // Save back
+    saveAllObjectData(object_data_file, current_data);
+
+    RCLCPP_INFO(node_->get_logger(), "Saved object '%s' info (pose, shape, dims) to %s", 
+                object_name.c_str(), object_data_file.c_str());
 }
 
-void TaskBuilder::spawnObject(const std::string& object_name, const std::string& object_shape,
-                                double x, double y, double z,
-                                double rx, double ry, double rz, double rw, 
-                                double da, double db, double dc)
+void TaskBuilder::spawnObject(const std::string& object_name,
+                              const std::string& object_shape,
+                              double x, double y, double z,
+                              double rx, double ry, double rz, double rw,
+                              double da, double db, double dc)
 {
+    RCLCPP_INFO(node_->get_logger(), "[spawn_object] Attempt to spawn '%s'", object_name.c_str());
+    moveit::planning_interface::PlanningSceneInterface psi;
+
+    // For demonstration, let’s decide that "object_shape" could be "use_memory" if we want to pull from file
+    // Or if the user passes shape as an empty string, we also read from memory, etc.
+
+    bool shape_provided = !object_shape.empty() && object_shape != "use_memory";
     bool coordinates_provided = !(std::isnan(x) || std::isnan(y) || std::isnan(z) ||
-                                    std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw));
+                                  std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw));
 
-    if (!coordinates_provided) {
-        RCLCPP_INFO(node_->get_logger(), 
-                    "[spawn_object] Coordinates not provided; reading from memory if available.");
+    // Build new struct with user input
+    StoredObjectData data;
+    data.pose.position.x = x;
+    data.pose.position.y = y;
+    data.pose.position.z = z;
+    data.pose.orientation.x = rx;
+    data.pose.orientation.y = ry;
+    data.pose.orientation.z = rz;
+    data.pose.orientation.w = rw;
+    data.shape = object_shape;
+    // dimensions
+    if (object_shape == "cylinder" || object_shape == "cone") {
+        data.dimensions = {da, db};
+    } else if (object_shape == "box") {
+        data.dimensions = {da, db, dc};
+    } else if (object_shape == "sphere") {
+        data.dimensions = {da};
+    }
+    data.color = "#FFFFFF";
+    data.alpha = 1.0;
 
-        std::string package_share_directory;
+    // If shape or coords not provided, load from memory
+    if (!shape_provided || !coordinates_provided) {
+        RCLCPP_INFO(node_->get_logger(), "[spawn_object] shape/coords not provided; reading from object_data.yaml if available.");
+
+        std::string pkg_share;
         try {
-        package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
-        } catch(const std::exception& e) {
-        RCLCPP_ERROR(node_->get_logger(),
-                    "Failed to get package share directory for 'fairino_mtc_demo': %s",
-                    e.what());
-        return;
+            pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+        } catch(...) {
+            RCLCPP_ERROR(node_->get_logger(), "Failed to get share dir for fairino_mtc_demo. Aborting spawn.");
+            return;
         }
-        std::string memory_dir = package_share_directory + "/memory/";
-        std::string object_locations_file = memory_dir + "object_locations.yaml";
+        std::string memory_dir = pkg_share + "/memory/";
+        std::string data_file = memory_dir + "object_data.yaml";
 
-        auto existing_locations = loadObjectLocations(object_locations_file);
-        if (existing_locations.find(object_name) != existing_locations.end()) {
-        geometry_msgs::msg::Pose remembered_pose = existing_locations[object_name];
-        x  = remembered_pose.position.x;
-        y  = remembered_pose.position.y;
-        z  = remembered_pose.position.z;
-        rx = remembered_pose.orientation.x;
-        ry = remembered_pose.orientation.y;
-        rz = remembered_pose.orientation.z;
-        rw = remembered_pose.orientation.w;
-
-        RCLCPP_INFO(node_->get_logger(),
-            "[spawn_object] Found previous location for '%s': (%.2f, %.2f, %.2f) / (%.2f, %.2f, %.2f, %.2f)",
-            object_name.c_str(), x, y, z, rx, ry, rz, rw);
-        } else {
-        RCLCPP_WARN(node_->get_logger(), 
-            "No recorded location for '%s' found in memory. Using default (0,0,0, identity orientation).",
-            object_name.c_str());
-        x = 0; y = 0; z = 0;
-        rx = 0; ry = 0; rz = 0; rw = 1;
+        auto existing_data = loadAllObjectData(data_file);
+        if (existing_data.find(object_name) == existing_data.end()) {
+            RCLCPP_ERROR(node_->get_logger(),
+                "No extended data for '%s' found in memory file %s. Cannot spawn.",
+                object_name.c_str(), data_file.c_str());
+            return;
         }
+        // Overwrite with saved data
+        StoredObjectData mem_data = existing_data[object_name];
+        data.pose = mem_data.pose;
+        if (!shape_provided)
+            data.shape = mem_data.shape;
+        if (mem_data.dimensions.size() > 0)
+            data.dimensions = mem_data.dimensions;
+        // color, alpha, etc.
+        data.color = mem_data.color;
+        data.alpha = mem_data.alpha;
     }
 
-    RCLCPP_INFO(node_->get_logger(),
-        "[spawn_object] name=%s, shape=%s, pose=(%.2f, %.2f, %.2f), orient=(%.2f, %.2f, %.2f, %.2f)",
-        object_name.c_str(), object_shape.c_str(), x, y, z, rx, ry, rz, rw);
+    // Validate shape and dimensions
+    if (data.shape.empty() || data.shape == "unknown") {
+        RCLCPP_ERROR(node_->get_logger(), "Shape not recognized. Abort spawn.");
+        return;
+    }
 
+    // Now we do the same collision object creation
     moveit_msgs::msg::CollisionObject object;
     object.id = object_name;
-    object.header.frame_id = "world"; // or your planning frame
+    object.header.frame_id = "world";
 
-    if (object_shape == "cylinder") {
-        object.primitives.resize(1);
-        object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-        object.primitives[0].dimensions = {da, db}; 
-    }
-    else if (object_shape == "box") {
-        object.primitives.resize(1);
-        object.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
-        object.primitives[0].dimensions = {da, db, dc};
-    }
-    else if (object_shape == "sphere") {
-        object.primitives.resize(1);
-        object.primitives[0].type = shape_msgs::msg::SolidPrimitive::SPHERE;
-        object.primitives[0].dimensions = {da};
-    }
-    else if (object_shape == "cone") {
-        object.primitives.resize(1);
-        object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CONE;
-        object.primitives[0].dimensions = {da, db};
-    }
-    else {
-        RCLCPP_ERROR(node_->get_logger(), "Unsupported shape type: %s", object_shape.c_str());
+    // Convert string -> SolidPrimitive::type
+    shape_msgs::msg::SolidPrimitive prim;
+    if (data.shape == "cylinder") {
+        prim.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
+        prim.dimensions.resize(2);
+        prim.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_HEIGHT] = data.dimensions[0];
+        prim.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_RADIUS] = data.dimensions[1];
+    } else if (data.shape == "box") {
+        prim.type = shape_msgs::msg::SolidPrimitive::BOX;
+        prim.dimensions.resize(3);
+        for (size_t i = 0; i < data.dimensions.size() && i < 3; ++i) {
+        prim.dimensions[i] = data.dimensions[i];
+        }
+    } else if (data.shape == "sphere") {
+        prim.type = shape_msgs::msg::SolidPrimitive::SPHERE;
+        prim.dimensions.resize(1);
+        prim.dimensions[shape_msgs::msg::SolidPrimitive::SPHERE_RADIUS] = data.dimensions[0];
+    } else if (data.shape == "cone") {
+        prim.type = shape_msgs::msg::SolidPrimitive::CONE;
+        prim.dimensions.resize(2);
+        prim.dimensions[shape_msgs::msg::SolidPrimitive::CONE_HEIGHT] = data.dimensions[0];
+        prim.dimensions[shape_msgs::msg::SolidPrimitive::CONE_RADIUS] = data.dimensions[1];
+    } else {
+        RCLCPP_ERROR(node_->get_logger(), "Unsupported shape: %s", data.shape.c_str());
         return;
     }
+    object.primitives.push_back(prim);
+    object.primitive_poses.push_back(data.pose);
 
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = x;
-    pose.position.y = y;
-    pose.position.z = z;
-    pose.orientation.x = rx;
-    pose.orientation.y = ry;
-    pose.orientation.z = rz;
-    pose.orientation.w = rw;
-    object.pose = pose;
-
-    moveit::planning_interface::PlanningSceneInterface psi;
+    // Apply
     psi.applyCollisionObject(object);
     RCLCPP_INFO(node_->get_logger(),
-                "Spawned object '%s' with shape '%s' in the scene.",
-                object_name.c_str(), object_shape.c_str());
+        "Spawned object '%s' [shape=%s] at (%.2f,%.2f,%.2f).",
+        object_name.c_str(), data.shape.c_str(),
+        data.pose.position.x, data.pose.position.y, data.pose.position.z);
+
+    // Optionally, also store the newly spawned data back into object_data.yaml
+    // so next time we have up-to-date info
+    std::string pkg_share;
+    try {
+        pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+    } catch(...) { return; }
+    std::string data_file = pkg_share + "/memory/object_data.yaml";
+    auto all_data = loadAllObjectData(data_file);
+    all_data[object_name] = data;
+    saveAllObjectData(data_file, all_data);
 }
 
 void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
@@ -961,12 +1088,14 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
 void TaskBuilder::gripperClose()
 {
     RCLCPP_INFO(node_->get_logger(), "[gripper_close] Called");
+    RCLCPP_ERROR(node_->get_logger(), "[gripper_close] have no action");
     // Implement gripper-close action here.
 }
 
 void TaskBuilder::gripperOpen()
 {
     RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
+    RCLCPP_ERROR(node_->get_logger(), "[gripper_open] have no action");
     // Implement gripper-open action here.
 }
 
@@ -1079,7 +1208,7 @@ bool TaskBuilder::planAndExecute(const std::vector<geometry_msgs::msg::PoseStamp
     move_group_->setMaxAccelerationScalingFactor(accel_scale);
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     plan.trajectory_ = trajectory;
-    bool success = (move_group_->execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+    bool success = (move_group_->execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
     if (!success) {
         RCLCPP_ERROR(node_->get_logger(), "Execution of Cartesian path failed");
     }

@@ -23,7 +23,7 @@
 
 // ------------------- Helper Functions for JSON & File Operations -------------------
 
-static void appendToJsonLog(const nlohmann::json& entry_content, rclcpp::Node::SharedPtr node)
+static void appendToJson(const nlohmann::json& entry_content, rclcpp::Node::SharedPtr node)
 {
 	// 1) Fixed file path (adjust as needed)
 	static const std::string JSON_FILE_PATH =
@@ -260,6 +260,21 @@ static void savePosesToFile(const std::string& filename, const std::vector<geome
 	std::cout << "Poses successfully saved to " << filename << std::endl;
 }
 
+static bool isNumeric(const std::string& s)
+{
+  try {
+    /* Attempt to parse as a double */
+    std::size_t pos;
+    std::stod(s, &pos);  // may throw
+    // If pos != s.size(), there is extra non-numeric text
+    if (pos != s.size()) 
+      return false;
+    return true;
+  } catch (...) {
+    return false; 
+  }
+}
+
 // ------------------- Command Parsing -------------------
 
 enum class CommandKind {
@@ -354,6 +369,7 @@ int main(int argc, char** argv)
 
 	int internal_variables = 6;
 	int task_variables = 9;
+	int default_variables = internal_variables + task_variables;
 
 	// Create TaskBuilder and start a new task.
 	TaskBuilder builder(node, arm_group_name, tip_frame);
@@ -363,246 +379,284 @@ int main(int argc, char** argv)
 	switch (parseCommand(command_str))
 	{
 		case CommandKind::ROBOT_PARAM:
-		builder.printRobotParams();
+			builder.printRobotParams();
 		break;
 
 		case CommandKind::CLEAR_SCENE:
-		builder.clearScene();
+			builder.clearScene();
 		break;
 
 		case CommandKind::REMOVE_OBJECT:
-		if (argc != (internal_variables + task_variables + 1)) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: remove_object <object_name>");
-			rclcpp::shutdown();
-			return 1;
+		{
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: remove_object <object_name>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.removeObject(argv[task_variables + 1]);
 		}
-		builder.removeObject(argv[task_variables + 1]);
 		break;
 
 		case CommandKind::SPAWN_OBJECT:
-		if (argc != 26) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string obj_name = argv[10];
-			double x = (argc == 26) ? std::stod(argv[11]) : std::numeric_limits<double>::quiet_NaN();
-			double y = (argc == 26) ? std::stod(argv[12]) : std::numeric_limits<double>::quiet_NaN();
-			double z = (argc == 26) ? std::stod(argv[13]) : std::numeric_limits<double>::quiet_NaN();
-			double rx = (argc == 26) ? std::stod(argv[14]) : std::numeric_limits<double>::quiet_NaN();
-			double ry = (argc == 26) ? std::stod(argv[15]) : std::numeric_limits<double>::quiet_NaN();
-			double rz = (argc == 26) ? std::stod(argv[16]) : std::numeric_limits<double>::quiet_NaN();
-			double rw = (argc == 26) ? std::stod(argv[17]) : std::numeric_limits<double>::quiet_NaN();
-			double da = (argc == 26) ? std::stod(argv[18]) : std::numeric_limits<double>::quiet_NaN();
-			double db = (argc == 26) ? std::stod(argv[19]) : std::numeric_limits<double>::quiet_NaN();
-			double dc = (argc == 26) ? std::stod(argv[20]) : std::numeric_limits<double>::quiet_NaN();
+			if (argc != (default_variables + 1) && argc != (default_variables + 11)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: spawn_object <obj_name> <x> <y> <z> <rx> <ry> <rz> <rw> <da> <db> <dc>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string obj_name = argv[task_variables + 1];
+			double x = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 2]) : std::numeric_limits<double>::quiet_NaN();
+			double y = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 3]) : std::numeric_limits<double>::quiet_NaN();
+			double z = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 4]) : std::numeric_limits<double>::quiet_NaN();
+			double rx = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 5]) : std::numeric_limits<double>::quiet_NaN();
+			double ry = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 6]) : std::numeric_limits<double>::quiet_NaN();
+			double rz = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 7]) : std::numeric_limits<double>::quiet_NaN();
+			double rw = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 8]) : std::numeric_limits<double>::quiet_NaN();
+			double da = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 9]) : std::numeric_limits<double>::quiet_NaN();
+			double db = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 10]) : std::numeric_limits<double>::quiet_NaN();
+			double dc = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 11]) : std::numeric_limits<double>::quiet_NaN();
 			builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
 		}
 		break;
 
 		case CommandKind::CHOOSE_PIPELINE:
-		if (argc != 6) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: choose_pipeline <pipeline_name> <planner_id>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string pipeline = argv[4];
-			std::string planner  = argv[5];
+			if (argc != (default_variables + 2)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: choose_pipeline <pipeline_name> <planner_id>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string pipeline = argv[task_variables + 1];
+			std::string planner  = argv[task_variables + 2];
 			builder.savePipelineConfig(pipeline, planner, 0.0, 0.0);
 			builder.choosePipeline(pipeline, planner, 0.0, 0.0);
 		}
 		break;
 
 		case CommandKind::JOINTS_MOVE:
-		if (argc != 10) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
+			if (argc != (default_variables + 2)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			// Check if argv[10] and argv[11] are non-numeric strings
+			if (isNumeric(argv[task_variables + 1]) || isNumeric(argv[task_variables + 2])) {
+				RCLCPP_ERROR(node->get_logger(),
+							"choose_pipeline: expected tip_frame and target_frame as non-numeric strings");
+				rclcpp::shutdown();
+				return 1;
+			}
+			// Assuming we have 6 joints
 			std::vector<double> joint_values;
-			for (int i = 4; i < 10; ++i)
+			for (int i = (task_variables + 1); i < (task_variables + 7); ++i)
 			joint_values.push_back(std::stod(argv[i]));
 			builder.jointsMove(joint_values);
 		}
 		break;
 
 		case CommandKind::ABSOLUTE_MOVE:
-		// Two modes: either 3 extra args (frame_id tip_frame target_frame) or 7 extra args (frame_id x y z rx ry rz rw)
-		if (argc == 7) {
-			std::string frame_id = argv[4];
-			std::string tip      = argv[5];
-			std::string target   = argv[6];
-			builder.absoluteMove(frame_id, tip, target);
-		} else if (argc == 12) {
-			std::string frame_id = argv[4];
-			double x  = std::stod(argv[5]);
-			double y  = std::stod(argv[6]);
-			double z  = std::stod(argv[7]);
-			double rx = std::stod(argv[8]);
-			double ry = std::stod(argv[9]);
-			double rz = std::stod(argv[10]);
-			double rw = std::stod(argv[11]);
-			builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
-		} else {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
-						"absolute_move <frame_id> <x> <y> <z> <rx> <ry> <rz> <rw>");
-			rclcpp::shutdown();
-			return 1;
-		}
+			// Two modes: either 3 extra args (frame_id tip_frame target_frame) or 7 extra args (frame_id x y z rx ry rz rw)
+			if (argc == (default_variables + 3)) {
+				// Check if argv[10] to argv[12] are non-numeric strings
+				if (isNumeric(argv[task_variables + 1]) || isNumeric(argv[task_variables + 2]) || isNumeric(argv[12])) {
+					RCLCPP_ERROR(node->get_logger(),
+								"absolute_move: expected tip_frame and target_frame as non-numeric strings");
+					rclcpp::shutdown();
+					return 1;
+				}
+				std::string frame_id = argv[task_variables + 1];
+				std::string tip      = argv[task_variables + 2];
+				std::string target   = argv[task_variables + 3];
+				builder.absoluteMove(frame_id, tip, target);
+			} else if (argc == (default_variables + 10)) {
+				// Check if argv[11] to argv[17] are all numeric values
+				bool numeric_args = true;
+				for (int i = (task_variables + 2); i <= (task_variables + 6); ++i) {
+					if (!isNumeric(argv[i])) {
+						numeric_args = false;
+						break;
+					}
+				}
+				if (!numeric_args) {
+					RCLCPP_ERROR(node->get_logger(),
+								"absolute_move: expected 7 numeric arguments for x, y, z, rx, ry, rz, rw");
+					rclcpp::shutdown();
+					return 1;
+				}
+				std::string frame_id = argv[task_variables + 1];
+				double x  = std::stod(argv[task_variables + 2]);
+				double y  = std::stod(argv[task_variables + 3]);
+				double z  = std::stod(argv[task_variables + 4]);
+				double rx = std::stod(argv[task_variables + 5]);
+				double ry = std::stod(argv[task_variables + 6]);
+				double rz = std::stod(argv[task_variables + 7]);
+				double rw = std::stod(argv[task_variables + 8]);
+				builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
+			} else {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
+							"absolute_move <frame_id> <x> <y> <z> <rx> <ry> <rz> <rw>");
+				rclcpp::shutdown();
+				return 1;
+			}
 		break;
 
 		case CommandKind::DISPLACEMENT_MOVE:
-		if (argc != 12) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string world_frame = argv[4];
-			std::string tip = argv[5];
+			// Check if argv[10] and argv[11] are non-numeric strings
+			if (isNumeric(argv[task_variables + 1]) || isNumeric(argv[task_variables + 2])) {
+				RCLCPP_ERROR(node->get_logger(),
+							"displacement_move: expected tip_frame and target_frame as non-numeric strings");
+				rclcpp::shutdown();
+				return 1;
+			}
+			if (argc != (default_variables + 8)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: displacement_move <world_frame> <tip_frame> <x> <y> <z> <rx> <ry> <rz>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string world_frame = argv[task_variables + 1];
+			std::string tip = argv[task_variables + 2];
 			std::vector<double> translation_vector;
-			for (int i = 6; i < 9; ++i)
+			for (int i = (task_variables + 3); i < (task_variables + 6); ++i)
 			translation_vector.push_back(std::stod(argv[i]));
 			std::vector<double> rotation_vector;
-			for (int i = 9; i < 12; ++i)
+			for (int i = (task_variables + 6); i < (task_variables + 9); ++i)
 			rotation_vector.push_back(std::stod(argv[i]));
 			builder.displacementMove(world_frame, tip, translation_vector, rotation_vector);
 		}
 		break;
 
 		case CommandKind::TRAJECTORY_MOVE:
-		if (argc != 8) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: trajectory_move <csv_file> <velocity_scale> <accel_scale> <pose_tolerance>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string csv_file = argv[4];
-			double vel_scale = std::stod(argv[5]);
-			double accel_scale = std::stod(argv[6]);
-			double pose_tol = std::stod(argv[7]);
+			if (argc != (default_variables + 4)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: trajectory_move <csv_file> <velocity_scale> <accel_scale> <pose_tolerance>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string csv_file = 				  argv[task_variables + 1];
+			double vel_scale = 			std::stod(argv[task_variables + 2]);
+			double accel_scale = 		std::stod(argv[task_variables + 3]);
+			double pose_tol = 			std::stod(argv[task_variables + 4]);
 			builder.trajectoryMove(csv_file, vel_scale, accel_scale, pose_tol);
 		}
 		break;
 
 		case CommandKind::FEEDBACK_MOVE:
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: feedback_move <pose_topic>");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.feedbackMove(argv[4]);
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: feedback_move <pose_topic>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.feedbackMove(argv[task_variables + 1]);
 		break;
 
 		case CommandKind::COLLABORATIVE_MOVE:
-		if (argc != 6) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: collaborative_move <torque_topic> <record_filename>");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.collaborativeMove(argv[4], argv[5]);
+			if (argc != (default_variables + 2)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: collaborative_move <torque_topic> <record_filename>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.collaborativeMove(argv[task_variables + 1], argv[task_variables + 2]);
 		break;
 
 		case CommandKind::GRIPPER_CLOSE:
-		if (argc != 4) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: gripper_close");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.gripperClose();
+			if (argc != (default_variables)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: gripper_close");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.gripperClose();
 		break;
 
 		case CommandKind::GRIPPER_OPEN:
-		if (argc != 4) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: gripper_open");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.gripperOpen();
+			if (argc != default_variables) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: gripper_open");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.gripperOpen();
 		break;
 
 		case CommandKind::ATTACH_OBJECT:
-		if (argc != 6) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: attach_object <object_name> <link_name>");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.attachObject(argv[4], argv[5]);
+			if (argc != default_variables) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: attach_object <object_name> <link_name>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.attachObject(argv[task_variables + 1], argv[task_variables + 2]);
 		break;
 
 		case CommandKind::DETACH_OBJECT:
-		if (argc != 6) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: detach_object <object_name> <link_name>");
-			rclcpp::shutdown();
-			return 1;
-		}
-		builder.detachObject(argv[4], argv[5]);
+			if (argc != (default_variables + 2)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: detach_object <object_name> <link_name>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			builder.detachObject(argv[task_variables + 1], argv[task_variables + 2]);
 		break;
 
 		case CommandKind::DELETE_JSON_SIM_CONTENT:
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_sim_content <filename>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			int rc = handleDeleteJsonSimContent(argv[4], node);
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_sim_content <filename>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			int rc = handleDeleteJsonSimContent(argv[task_variables + 1], node);
 			rclcpp::shutdown();
 			return rc;
 		}
 		break;
 
 		case CommandKind::DELETE_JSON_TEMP:
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_temp <directory>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			int rc = handleDeleteJsonTemp(argv[4], node);
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: delete_json_temp <directory>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			int rc = handleDeleteJsonTemp(argv[task_variables + 1], node);
 			rclcpp::shutdown();
 			return rc;
 		}
 		break;
 
 		case CommandKind::CHECK_JSON_FILES:
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: check_json_files <directory>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			int rc = handleCheckJsonFiles(argv[4], node);
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: check_json_files <directory>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			int rc = handleCheckJsonFiles(argv[task_variables + 1], node);
 			rclcpp::shutdown();
 			return rc;
 		}
 		break;
 
 		case CommandKind::SCAN_LINE:
-		// Expect: scan_line <sx> <sy> <sz> <srx> <sry> <srz> <srw> <ex> <ey> <ez> <erx> <ery> <erz> <erw> <num_steps>
-		if (argc != 19) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: scan_line <sx> <sy> <sz> <srx> <sry> <srz> <srw> <ex> <ey> <ez> <erx> <ery> <erz> <erw> <num_steps>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
+			if (argc != (default_variables + 7)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: scan_line <x1> <y1> <z1> <x2> <y2> <z2> <num_steps>");
+				rclcpp::shutdown();
+				return 1;
+			}
+
 			geometry_msgs::msg::Point start, end;
-			start.x = std::stod(argv[4]);
-			start.y = std::stod(argv[5]);
-			start.z = std::stod(argv[6]);
-			end.x = std::stod(argv[11]);
-			end.y = std::stod(argv[12]);
-			end.z = std::stod(argv[13]);
-			int num_steps = std::stoi(argv[18]);
+			start.x = 		std::stod(argv[task_variables + 1]);
+			start.y = 		std::stod(argv[task_variables + 2]);
+			start.z = 		std::stod(argv[task_variables + 3]);
+			end.x = 		std::stod(argv[task_variables + 4]);
+			end.y = 		std::stod(argv[task_variables + 5]);
+			end.z = 		std::stod(argv[task_variables + 6]);
+			int num_steps = std::stoi(argv[task_variables + 7]);
 			if (num_steps < 2) num_steps = 2;
 			// If TaskBuilder::scanLine is implemented, call it.
 			builder.scanLine(start, end);
@@ -610,31 +664,30 @@ int main(int argc, char** argv)
 		break;
 
 		case CommandKind::CALIBRATE_CAMERA:
-		// Expect: calibrate_camera <x> <y> <z> <rx> <ry> <rz> <rw>
-		if (argc != 11) {
-			RCLCPP_ERROR(node->get_logger(),
-						"Usage: calibrate_camera <x> <y> <z> <rx> <ry> <rz> <rw>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			double x = std::stod(argv[4]);
-			double y = std::stod(argv[5]);
-			double z = std::stod(argv[6]);
+			if (argc != (default_variables + 3)) {
+				RCLCPP_ERROR(node->get_logger(),
+							"Usage: calibrate_camera <x> <y> <z>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			double x = std::stod(argv[task_variables + 1]);
+			double y = std::stod(argv[task_variables + 2]);
+			double z = std::stod(argv[task_variables + 3]);
 			// The orientation is not used in our simple example.
 			builder.calibrateCamera(x, y, z);
 		}
 		break;
 
 		case CommandKind::GCODE_LOAD:
-		// Expect: gcode_load <gcode_filename>
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: gcode_load <gcode_filename>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string gcode_file = argv[4];
+			// Expect: gcode_load <gcode_filename>
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: gcode_load <gcode_filename>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string gcode_file = argv[task_variables + 1];
 			auto gcode_poses = builder.gcodeLoad(gcode_file, ""); // mode can be used if needed
 			if (gcode_poses.empty()) {
 			RCLCPP_ERROR(node->get_logger(), "No valid trajectory from G-code file: %s", gcode_file.c_str());
@@ -649,14 +702,14 @@ int main(int argc, char** argv)
 		break;
 
 		case CommandKind::STEP_LOAD:
-		// Expect: step_load <step_filename>
-		if (argc != 5) {
-			RCLCPP_ERROR(node->get_logger(), "Usage: step_load <step_filename>");
-			rclcpp::shutdown();
-			return 1;
-		}
 		{
-			std::string step_filename = argv[4];
+			// Expect: step_load <step_filename>
+			if (argc != (default_variables + 1)) {
+				RCLCPP_ERROR(node->get_logger(), "Usage: step_load <step_filename>");
+				rclcpp::shutdown();
+				return 1;
+			}
+			std::string step_filename = argv[task_variables + 1];
 			auto curve_poses = builder.stepLoad(step_filename);
 			if (curve_poses.empty()) {
 			RCLCPP_ERROR(node->get_logger(), "No valid poses generated from STEP file: %s", step_filename.c_str());
@@ -690,6 +743,13 @@ int main(int argc, char** argv)
 		RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
 		rclcpp::shutdown();
 		return 1;
+	}
+
+	// Finally, if `entry` is non-empty, append it to test.json
+	nlohmann::json entry;
+	if (!entry.empty() && (save_json == "True")) {
+		appendToJson(entry, node);
+		RCLCPP_INFO(node->get_logger(), "Saving to JSON file!");
 	}
 
 	RCLCPP_INFO(node->get_logger(), "Task complete!");

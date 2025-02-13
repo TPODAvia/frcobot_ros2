@@ -86,30 +86,6 @@ static void removeUnwantedKeys(nlohmann::json& j, const std::vector<std::string>
 	}
 }
 
-static int saveJsonFile(const std::string& filepath, const nlohmann::json& json_data, rclcpp::Node::SharedPtr node)
-{
-	try {
-		std::filesystem::path file_path(filepath);
-		std::filesystem::path parent_dir = file_path.parent_path();
-		if (!std::filesystem::exists(parent_dir)) {
-		std::filesystem::create_directories(parent_dir);
-		RCLCPP_INFO(node->get_logger(), "Created directory: %s", parent_dir.string().c_str());
-		}
-		std::ofstream fout(filepath);
-		if (!fout.is_open()) {
-		RCLCPP_ERROR(node->get_logger(), "Failed to open file for writing: %s", filepath.c_str());
-		return 1;
-		}
-		fout << json_data.dump(2) << std::endl;
-		RCLCPP_INFO(node->get_logger(), "Successfully saved JSON file: %s", filepath.c_str());
-		fout.close();
-		return 0;
-	} catch (const std::exception& e) {
-		RCLCPP_ERROR(node->get_logger(), "Error saving JSON file: %s. Exception: %s", filepath.c_str(), e.what());
-		return 1;
-	}
-}
-
 static int handleDeleteJsonSimContent(const std::string& filename, rclcpp::Node::SharedPtr node)
 {
 	if (!std::filesystem::exists(filename)) {
@@ -339,7 +315,10 @@ static CommandKind parseCommand(const std::string& cmd)
 int main(int argc, char** argv)
 {
 	rclcpp::init(argc, argv);
-	auto node = rclcpp::Node::make_shared("task_generator_node");
+	rclcpp::NodeOptions options;
+	options.automatically_declare_parameters_from_overrides(true);
+	auto node = std::make_shared<rclcpp::Node>("task_generator_node", options);
+
 
 	// Print all argv arguments
 	std::cout << "Command-line arguments:\n";
@@ -370,10 +349,10 @@ int main(int argc, char** argv)
 	int internal_variables = 6;
 	int task_variables = 9;
 	int default_variables = internal_variables + task_variables;
-
 	// Create TaskBuilder and start a new task.
 	TaskBuilder builder(node, arm_group_name, tip_frame);
 	builder.newTask("demo_task");
+	nlohmann::json entry;
 
 	// Process commands.
 	switch (parseCommand(command_str))
@@ -383,7 +362,18 @@ int main(int argc, char** argv)
 		break;
 
 		case CommandKind::CLEAR_SCENE:
+		{
 			builder.clearScene();
+			if (true) {
+				// Format:
+				//  "1713337691.1535506": {
+				//   "clear_scene": {
+				//    "clear_scene": 1
+				//   }
+				//  }
+				entry["clear_scene"] = { { "clear_scene", 1 } };
+			}
+		}
 		break;
 
 		case CommandKind::REMOVE_OBJECT:
@@ -394,6 +384,17 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.removeObject(argv[task_variables + 1]);
+			if (true) {
+				// Format:
+				// {
+				//  "1713337798.1825986": {
+				//   "remove_object": {
+				//    "hello_box": 1
+				//   }
+				//  }
+				std::string object_name = argv[task_variables + 1];
+				entry["remove_object"] = { { object_name, 1 } };
+			}
 		}
 		break;
 
@@ -417,6 +418,24 @@ int main(int argc, char** argv)
 			double db = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 10]) : std::numeric_limits<double>::quiet_NaN();
 			double dc = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 11]) : std::numeric_limits<double>::quiet_NaN();
 			builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
+			if (true) {
+				// Format:
+				//  "1713337863.463677": {
+				//   "spawn_object": {
+				//    "hello_box": {
+				//     "x": 0.0,
+				//     "y": 0.5,
+				//     "z": 0.2
+				//    }
+				//   }
+				//  }
+				std::string object_name = argv[10];
+				entry["spawn_object"][object_name] = {
+					{ "x", x },
+					{ "y", y },
+					{ "z", z }
+				};
+			}
 		}
 		break;
 
@@ -431,6 +450,17 @@ int main(int argc, char** argv)
 			std::string planner  = argv[task_variables + 2];
 			builder.savePipelineConfig(pipeline, planner, 0.0, 0.0);
 			builder.choosePipeline(pipeline, planner, 0.0, 0.0);
+			if (true) {
+				// Format:
+				//  "1713337876.5688505": {
+				//   "choose_pipeline": {
+				//    "OMPL": "RRTConnect"
+				//   }
+				//  }
+				std::string pipeline = argv[10];
+				std::string planner  = argv[11];
+				entry["choose_pipeline"][pipeline] = planner;
+			}
 		}
 		break;
 
@@ -458,6 +488,29 @@ int main(int argc, char** argv)
 				joint_values.push_back(std::stod(argv[i]));
 			}
 			builder.jointsMove(joint_values);
+			if (true) {
+				// Format:
+				//  "1713337825.8489513": {
+				//   "joints_move": {
+				//    "positions": {
+				//     "j1": -0.05924035042911946,
+				//     "j2": -1.3807693204190459,
+				//     "j3": 1.4017875208377042,
+				//     "j4": -0.01751446328105022,
+				//     "j5": -0.07052746890781059,
+				//     "j6": 0.02017181009719593
+				//    }
+				//   }
+				//  }
+				nlohmann::json joint_map;
+				joint_map["j1"] = std::stod(argv[task_variables + 1]);
+				joint_map["j2"] = std::stod(argv[task_variables + 2]);
+				joint_map["j3"] = std::stod(argv[task_variables + 3]);
+				joint_map["j4"] = std::stod(argv[task_variables + 4]);
+				joint_map["j5"] = std::stod(argv[task_variables + 5]);
+				joint_map["j6"] = std::stod(argv[task_variables + 6]);
+				entry["joints_move"]["positions"] = joint_map;
+			}
 		}
 		break;
 
@@ -506,6 +559,39 @@ int main(int argc, char** argv)
 				rclcpp::shutdown();
 				return 1;
 			}
+			if (true) {
+				// Format:
+				//  "1713338342.2387867": {
+				//   "absolute_move": {
+				//    "tf_end": {
+				//     "position": [
+				//      0.0,
+				//      0.5,
+				//      0.2
+				//     ],
+				//     "quaternion": [
+				//      0,
+				//      0,
+				//      0,
+				//      1
+				//     ]
+				//    }
+				//   }
+				//  }
+				// We'll replicate old "end_coordinate" wrapping with "absolute_move":
+				std::string frame_id = argv[task_variables + 1];
+				double x  = std::stod(argv[task_variables + 2]);
+				double y  = std::stod(argv[task_variables + 3]);
+				double z  = std::stod(argv[task_variables + 4]);
+				double rx = std::stod(argv[task_variables + 5]);
+				double ry = std::stod(argv[task_variables + 6]);
+				double rz = std::stod(argv[task_variables + 7]);
+				double rw = std::stod(argv[task_variables + 8]);
+				entry["absolute_move"][frame_id] = {
+				{ "position",   { x, y, z } },
+				{ "quaternion", { rx, ry, rz, rw } }
+				};
+			}
 		break;
 
 		case CommandKind::DISPLACEMENT_MOVE:
@@ -532,6 +618,36 @@ int main(int argc, char** argv)
 			for (int i = (task_variables + 6); i < (task_variables + 9); ++i)
 			rotation_vector.push_back(std::stod(argv[i]));
 			builder.displacementMove(world_frame, tip, translation_vector, rotation_vector);
+			if (true) {
+				// Format:
+				//  "1713338342.2387867": {
+				//   "displacement_move": {
+				//    "tf_end": {
+				//     "translation": [
+				//      0.0,
+				//      0.5,
+				//      0.2
+				//     ],
+				//     "rotation": [
+				//      0,
+				//      0,
+				//      0,
+				//     ]
+				//    }
+				//   }
+				//  }
+				std::string frame_id = argv[task_variables + 1];
+				double tx  = std::stod(argv[task_variables + 2]);
+				double ty  = std::stod(argv[task_variables + 3]);
+				double tz  = std::stod(argv[task_variables + 4]);
+				double rx  = std::stod(argv[task_variables + 5]);
+				double ry  = std::stod(argv[task_variables + 6]);
+				double rz  = std::stod(argv[task_variables + 7]);
+				entry["displacement_move"][frame_id] = {
+				{ "translation",   	{ tx, ty, tz } },
+				{ "rotation", 		{ rx, ry, rz } }
+				};
+			}
 		}
 		break;
 
@@ -548,19 +664,27 @@ int main(int argc, char** argv)
 			double accel_scale = 		std::stod(argv[task_variables + 3]);
 			double pose_tol = 			std::stod(argv[task_variables + 4]);
 			builder.trajectoryMove(csv_file, vel_scale, accel_scale, pose_tol);
+			if (true) {
+			}
 		}
 		break;
 
 		case CommandKind::FEEDBACK_MOVE:
+		{
 			if (argc != (default_variables + 1)) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: feedback_move <pose_topic>");
 				rclcpp::shutdown();
 				return 1;
 			}
 			builder.feedbackMove(argv[task_variables + 1]);
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[feedback_move]: json saving is not suppported");
+			}
+		}
 		break;
 
 		case CommandKind::COLLABORATIVE_MOVE:
+		{
 			if (argc != (default_variables + 2)) {
 				RCLCPP_ERROR(node->get_logger(),
 							"Syntax Error! Usage: collaborative_move <torque_topic> <record_filename>");
@@ -568,24 +692,52 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.collaborativeMove(argv[task_variables + 1], argv[task_variables + 2]);
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
+			}
+		}
 		break;
 
 		case CommandKind::GRIPPER_CLOSE:
+		{
 			if (argc != (default_variables)) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_close");
 				rclcpp::shutdown();
 				return 1;
 			}
 			builder.gripperClose();
+			if (true) {
+				// Format:
+				//   "1714837275.7592714": {
+				//    "gripper_close": {
+				//     "gripper_close": 0.18
+				//    }
+				//   }
+				std::string object_name = argv[10];
+				std::string link_name   = argv[11];
+				entry["gripper_close"]["gripper_close"] = 1.0;
+			}
+		}
 		break;
 
 		case CommandKind::GRIPPER_OPEN:
+		{
 			if (argc != default_variables) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_open");
 				rclcpp::shutdown();
 				return 1;
 			}
 			builder.gripperOpen();
+			if (true) {
+				// Format:
+				//   "1714837303.1926935": {
+				//    "gripper_open": {
+				//     "gripper_open": 0.0
+				//    }
+				//   }
+				entry["gripper_open"]["gripper_open"] = 0.0;
+			}
+		}
 		break;
 
 		case CommandKind::ATTACH_OBJECT:
@@ -595,6 +747,17 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.attachObject(argv[task_variables + 1], argv[task_variables + 2]);
+			if (true) {
+				// Format:
+				//  "1713338391.0690901": {
+				//   "attach_object": {
+				//    "hello_box": "tf_end"
+				//   }
+				//  }
+				std::string object_name = argv[task_variables + 1];
+				std::string link_name   = argv[task_variables + 2];
+				entry["attach_object"][object_name] = link_name;
+			}
 		break;
 
 		case CommandKind::DETACH_OBJECT:
@@ -604,6 +767,17 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.detachObject(argv[task_variables + 1], argv[task_variables + 2]);
+			if (true) {
+				// Format:
+				//  "1713338391.0690901": {
+				//   "detach_object": {
+				//    "hello_box": "tf_end"
+				//   }
+				//  }
+				std::string object_name = argv[task_variables + 1];
+				std::string link_name   = argv[task_variables + 2];
+				entry["detach_object"][object_name] = link_name;
+			}
 		break;
 
 		case CommandKind::DELETE_JSON_SIM_CONTENT:
@@ -647,7 +821,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::SCAN_LINE:
 		{
-			if (argc != (default_variables + 7)) {
+			if (argc != (default_variables + 6)) {
 				RCLCPP_ERROR(node->get_logger(),
 							"Syntax Error! Usage: scan_line <x1> <y1> <z1> <x2> <y2> <z2> <num_steps>");
 				rclcpp::shutdown();
@@ -662,9 +836,14 @@ int main(int argc, char** argv)
 			end.y = 		std::stod(argv[task_variables + 5]);
 			end.z = 		std::stod(argv[task_variables + 6]);
 			int num_steps = std::stoi(argv[task_variables + 7]);
-			if (num_steps < 2) num_steps = 2;
+			if (num_steps < 2) {
+				num_steps = 2;	
+			}
 			// If TaskBuilder::scanLine is implemented, call it.
 			builder.scanLine(start, end);
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			}
 		}
 		break;
 
@@ -681,6 +860,9 @@ int main(int argc, char** argv)
 			double z = std::stod(argv[task_variables + 3]);
 			// The orientation is not used in our simple example.
 			builder.calibrateCamera(x, y, z);
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			}
 		}
 		break;
 
@@ -703,6 +885,9 @@ int main(int argc, char** argv)
 			savePosesToFile(debug_file, gcode_poses);
 			RCLCPP_INFO(node->get_logger(), "G-code poses saved to %s", debug_file.c_str());
 			// Optionally, call builder.trajectoryMove() if you have an overload.
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			}
 		}
 		break;
 
@@ -724,6 +909,9 @@ int main(int argc, char** argv)
 			// Optionally, save debug file:
 			// savePosesToFile("step_curve_poses_debug.txt", curve_poses);
 			// Optionally, call builder.trajectoryMove() if you have an overload.
+			if (true) {
+				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			}
 		}
 		break;
 
@@ -744,15 +932,21 @@ int main(int argc, char** argv)
 		rclcpp::shutdown();
 		return 1;
 	}
-	// if (!builder.executeTask() && (exec_task == "True")) {
-	// 	RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
-	// 	rclcpp::shutdown();
-	// 	return 1;
-	// }
+	if (exec_task == "true") {
+		if (!builder.executeTask()) {
+			RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
+			rclcpp::shutdown();
+			return 1;
+		}
+	}
 
 	// Finally, if `entry` is non-empty, append it to test.json
-	nlohmann::json entry;
-	if (!entry.empty() && (save_json == "True")) {
+	if (save_json == "true") {
+		if (entry.empty()) {
+			RCLCPP_ERROR(node->get_logger(), "Failed to save to JSON entry is empty");
+			rclcpp::shutdown();
+			return 1;
+		}
 		appendToJson(entry, node);
 		RCLCPP_INFO(node->get_logger(), "Saving to JSON file!");
 	}

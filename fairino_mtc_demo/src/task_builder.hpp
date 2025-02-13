@@ -190,14 +190,6 @@ private:
 
     // The callback that updates current_joint_positions_
     void jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
-    
-    // Generates a spline-interpolated trajectory from joint waypoints.
-    bool generateSplineTrajectory(const moveit::core::RobotModelConstPtr& robot_model,
-                                    const std::vector<std::vector<double>>& joint_waypoints,
-                                    moveit_msgs::msg::RobotTrajectory& trajectory_out,
-                                    double total_time = 5.0,
-                                    double time_step = 0.05);
-    
 
     // Loads the solver configuration from a YAML file and sets the current_solver_.
     bool loadSolverConfig(const std::string& file_path);
@@ -214,12 +206,6 @@ private:
                                     const std::map<std::string, geometry_msgs::msg::Pose>& object_map);
 
     std::vector<geometry_msgs::msg::PoseStamped> parseCsv(const std::string& csv_file);
-
-    void parseGcode(const std::string& gcode_file,
-                    std::vector<geometry_msgs::msg::PoseStamped>& out_poses);
-
-    void parseSplineFile(const std::string& step_file,
-                        std::vector<geometry_msgs::msg::PoseStamped>& out_poses);
 
     void feedbackPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
     

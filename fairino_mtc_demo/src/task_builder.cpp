@@ -1190,6 +1190,8 @@ bool TaskBuilder::planAndExecute(const std::vector<geometry_msgs::msg::PoseStamp
                                  double accel_scale,
                                  double pose_tolerance)
 {
+    RCLCPP_INFO(node_->get_logger(), "vel=%.2f, accel=%.2f, tol=%.2f", velocity_scale, accel_scale, pose_tolerance);
+
     if (!move_group_) {
         RCLCPP_ERROR(node_->get_logger(), "MoveGroupInterface not initialized!");
         return false;
@@ -1208,7 +1210,7 @@ bool TaskBuilder::planAndExecute(const std::vector<geometry_msgs::msg::PoseStamp
     move_group_->setMaxAccelerationScalingFactor(accel_scale);
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     plan.trajectory_ = trajectory;
-    bool success = (move_group_->execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+    bool success = (move_group_->execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
     if (!success) {
         RCLCPP_ERROR(node_->get_logger(), "Execution of Cartesian path failed");
     }
@@ -1256,28 +1258,6 @@ std::vector<geometry_msgs::msg::PoseStamped> TaskBuilder::parseCsv(const std::st
     return waypoints;
 }
 
-void TaskBuilder::parseGcode(const std::string& gcode_file,
-                  std::vector<geometry_msgs::msg::PoseStamped>& out_poses)
-{
-    RCLCPP_WARN(node_->get_logger(), "parseGcode is not implemented");
-}
-
-void TaskBuilder::parseSplineFile(const std::string& step_file,
-                                    std::vector<geometry_msgs::msg::PoseStamped>& out_poses)
-{
-    RCLCPP_WARN(node_->get_logger(), "parseSplineFile is not implemented");
-}
-
-bool TaskBuilder::generateSplineTrajectory(const moveit::core::RobotModelConstPtr& robot_model,
-                                            const std::vector<std::vector<double>>& joint_waypoints,
-                                            moveit_msgs::msg::RobotTrajectory& trajectory_out,
-                                            double total_time,
-                                            double time_step)
-{
-    RCLCPP_WARN(node_->get_logger(), "generateSplineTrajectory is not implemented");
-    return false;
-}
-
 std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& gcode_file, const std::string& mode)
 {
     std::vector<GCodeCommand> all_commands;
@@ -1297,6 +1277,16 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& 
         all_commands.push_back(cmd);
     }
     file.close();
+    
+    if (mode == "printing") {
+        RCLCPP_INFO(node_->get_logger(), "Mode: %s", mode.c_str());
+    }
+    else if  (mode == "milling") {
+        RCLCPP_INFO(node_->get_logger(), "Mode: %s", mode.c_str());
+    }
+    else if  (mode == "welding") {
+        RCLCPP_INFO(node_->get_logger(), "Mode: %s", mode.c_str());
+    }
 
     double x = 0.0, y = 0.0, z = 0.0;
     std::vector<geometry_msgs::msg::Pose> path;

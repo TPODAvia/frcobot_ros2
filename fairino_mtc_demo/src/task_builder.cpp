@@ -235,13 +235,13 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     {
         if (planner_id == "RRTConnect")
         {
-        config["max_velocity_scaling_factor"] = 0.7;
-        config["max_acceleration_scaling_factor"] = 0.7;
+        config["max_velocity_scaling_factor"] = 0.6;
+        config["max_acceleration_scaling_factor"] = 0.6;
         }
         else if (planner_id == "PRM")
         {
-        config["max_velocity_scaling_factor"] = 0.8;
-        config["max_acceleration_scaling_factor"] = 0.8;
+        config["max_velocity_scaling_factor"] = 0.7;
+        config["max_acceleration_scaling_factor"] = 0.7;
         }
         else
         {
@@ -1160,8 +1160,8 @@ bool TaskBuilder::planTask(unsigned max_solutions)
     RCLCPP_INFO(node_->get_logger(), "[planTask] Planning MTC Task");
     try {
         if (!task_.plan(max_solutions)) {
-        RCLCPP_ERROR(node_->get_logger(), "Task planning failed");
-        return false;
+            RCLCPP_ERROR(node_->get_logger(), "Task planning failed");
+            return false;
         }
         return true;
     } catch(const mtc::InitStageException& ex) {
@@ -1208,12 +1208,13 @@ bool TaskBuilder::planAndExecute(const std::vector<geometry_msgs::msg::PoseStamp
     move_group_->setMaxAccelerationScalingFactor(accel_scale);
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     plan.trajectory_ = trajectory;
-    bool success = (move_group_->execute(plan) == moveit::core::MoveItErrorCode::SUCCESS);
+    bool success = (move_group_->execute(plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
     if (!success) {
         RCLCPP_ERROR(node_->get_logger(), "Execution of Cartesian path failed");
     }
     return success;
 }
+
 
 std::vector<geometry_msgs::msg::PoseStamped> TaskBuilder::parseCsv(const std::string& csv_file)
 {

@@ -437,8 +437,9 @@ int main(int argc, char** argv)
 		case CommandKind::JOINTS_MOVE:
 		{
 			std::vector<double> joint_values;
-			if (argc != (default_variables + 1)) {
+			if (argc == (default_variables)) {
 				builder.jointsMove(joint_values);
+				return 1;
 			}
 			if (argc != (default_variables + 6)) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
@@ -446,15 +447,16 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			// Check if argv[10] and argv[11] are non-numeric strings
-			if (isNumeric(argv[task_variables + 1]) || isNumeric(argv[task_variables + 2])) {
+			if (!isNumeric(argv[task_variables + 1]) || !isNumeric(argv[task_variables + 2])) {
 				RCLCPP_ERROR(node->get_logger(),
 							"choose_pipeline: expected tip_frame and target_frame as non-numeric strings");
 				rclcpp::shutdown();
 				return 1;
 			}
 			// Assuming we have 6 joints
-			for (int i = (task_variables + 1); i < (task_variables + 7); ++i)
-			joint_values.push_back(std::stod(argv[i]));
+			for (int i = (task_variables + 1); i < (task_variables + 7); ++i) {
+				joint_values.push_back(std::stod(argv[i]));
+			}
 			builder.jointsMove(joint_values);
 		}
 		break;
@@ -742,11 +744,11 @@ int main(int argc, char** argv)
 		rclcpp::shutdown();
 		return 1;
 	}
-	if (!builder.executeTask()) {
-		RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
-		rclcpp::shutdown();
-		return 1;
-	}
+	// if (!builder.executeTask() && (exec_task == "True")) {
+	// 	RCLCPP_ERROR(node->get_logger(), "Failed to execute MTC task");
+	// 	rclcpp::shutdown();
+	// 	return 1;
+	// }
 
 	// Finally, if `entry` is non-empty, append it to test.json
 	nlohmann::json entry;

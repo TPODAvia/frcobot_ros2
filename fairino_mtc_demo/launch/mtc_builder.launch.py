@@ -9,7 +9,7 @@ packagename = "fairino10_v6_moveit2_config"
 robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
 tip_frame = "wrist3_link"
-exec_task = True
+exec_task = False
 save_json = False
 reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
@@ -60,13 +60,13 @@ def generate_launch_description():
                 # "gripper_open"
                 # "gripper_close"
                 # "joints_move"
-                # "joints_move", "2.1", "-1.9", "1.9", "-1.6", "1.3", "0"
+                "joints_move", "0.47", "-1.25", "0.056", "0.47", "1.3", "0"
                 # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0","0", "1.1"
                 # "check_json_files", default_json_path
                 # "delete_json_sim_content", json_sim_content
                 # "delete_json_temp", default_json_path
 
-                # "absolute_move", "world", "0.5", "0.1", "0.5", "0", "0", "0", "1"
+                # "absolute_move", "world", "0.25", "0.1", "0.5", "0", "0", "0", "1"
                 # "absolute_move", "world", tip_frame, "wrist3_link"
                 # "absolute_move", "world", tip_frame, "cylinder"
                 # "absolute_move", "world", "0.5", "0.5"

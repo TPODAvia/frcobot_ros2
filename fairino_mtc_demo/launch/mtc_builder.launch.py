@@ -10,7 +10,7 @@ robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
 tip_frame = "wrist3_link"
 exec_task = False
-save_json = False
+save_json = True
 reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
 reserved_3 = False # this could be for tolerance
@@ -45,7 +45,7 @@ def generate_launch_description():
             str(reserved_3).lower(),
             str(reserved_4).lower(),
                 # "get_robot_param"
-                # "clear_scene".
+                # "clear_scene"
                 # "remove_object", "cylinder"
                 # "remove_object", "box"
                 # "remove_object", "sphere"
@@ -58,9 +58,9 @@ def generate_launch_description():
                 # "attach_object", "cylinder", tip_frame
                 # "detach_object", "cylinder", tip_frame
                 # "gripper_open"
-                # "gripper_close"
+                "gripper_close"
                 # "joints_move"
-                "joints_move", "0.47", "-1.25", "0.056", "0.47", "1.3", "0"
+                # "joints_move", "0.47", "-1.25", "0.056", "0.47", "1.3", "0"
                 # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0","0", "1.1"
                 # "check_json_files", default_json_path
                 # "delete_json_sim_content", json_sim_content

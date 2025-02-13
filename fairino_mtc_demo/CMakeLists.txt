@@ -38,14 +38,12 @@ add_library(${PROJECT_NAME}_lib
   src/task_builder.cpp
 )
 
-# Specify include directories for the library
 target_include_directories(${PROJECT_NAME}_lib
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>  # Assuming headers are in 'include/'
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-# Link the library with required dependencies
 ament_target_dependencies(${PROJECT_NAME}_lib
   rclcpp
   moveit_task_constructor_core
@@ -60,7 +58,6 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   yaml-cpp
 )
 
-# Link Eigen3 libraries
 target_link_libraries(${PROJECT_NAME}_lib
   Eigen3::Eigen
   yaml-cpp
@@ -113,19 +110,41 @@ target_link_libraries(task_generator
   Eigen3::Eigen
 )
 
+# 4) task_executor
+add_executable(task_executor src/task_executor.cpp)
+target_compile_features(task_executor PUBLIC cxx_std_17)
+ament_target_dependencies(task_executor
+  rclcpp
+  moveit_task_constructor_core
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  moveit_msgs
+  geometry_msgs
+  trajectory_msgs
+  Eigen3
+  tf2_geometry_msgs
+  yaml-cpp
+)
+target_link_libraries(task_executor
+  ${PROJECT_NAME}_lib
+  Eigen3::Eigen
+)
+
 ##############################################################################
 # Installation
 ##############################################################################
-# Install all executables and the library
+
 install(
-  TARGETS 
+  TARGETS
     mtc_node
     add_collision_objects
     task_generator
+    task_executor  # <-- install the new executable
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Optionally install headers if you move them to `include/`:
+# (Optional) If you have headers in `include/`:
 # install(
 #   DIRECTORY include/
 #   DESTINATION include

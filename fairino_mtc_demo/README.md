@@ -63,6 +63,19 @@ rosrun moveit_python task_generator.py fr10 choose_pipeline PILZ LIN
 rosrun moveit_python task_generator.py fr10 choose_follow_mode
 ```
 
+### Running executor
+```bash
+ros2 launch fairino_mtc_demo task_executor.launch.py \
+    arm_group_name:=manipulator \
+    tip_frame:=tool0 \
+    exec_task:=true \
+    json_file:=/home/user/path/to/test.json \
+    velocity:=1.0 \
+    accel:=1.0 \
+    tolerance:=0.01 \
+    gripper:=my_gripper
+```
+
 ## Additional Functionalities
 - **Edit Objects:** Modify properties like size, material, and color
 - **Duplicate Objects:** Clone objects in the scene

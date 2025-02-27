@@ -60,6 +60,14 @@ public:
                 const std::string& arm_group_name,
                 const std::string& tip_frame);
 
+    std::unordered_map<std::string, double> getCurrentJointPositions() const {
+        return current_joint_positions_;
+    }
+
+    bool ok() const {
+        return executed_;
+    }
+    
     // Clears the internal reference to the current MTC task and starts a new one.
     void newTask(const std::string& task_name);
 
@@ -143,7 +151,7 @@ public:
 
     // Moves straight line from point A to B, orientation forced to [0,0,0,1].
     // After finishing, print "Scan Finish".
-    void scanLine(const geometry_msgs::msg::Point& start,
+    void scanLine(std::string world_frame, const geometry_msgs::msg::Point& start,
                     const geometry_msgs::msg::Point& end);
 
     // Moves the end-effector "arbitrarily" but keeps it pointed at the 3D point [x,y,z]
@@ -187,6 +195,8 @@ private:
     // We'll store the latest joint positions from /joint_states in here:
     std::vector<std::string> joint_names_;
     std::unordered_map<std::string, double> current_joint_positions_;
+
+    bool executed_{false};
 
     // The callback that updates current_joint_positions_
     void jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg);

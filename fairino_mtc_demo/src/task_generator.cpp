@@ -199,12 +199,22 @@ static int handleCheckJsonFiles(const std::string& directory, rclcpp::Node::Shar
 	std::cout << "Directory: " << directory << "\n";
 	std::cout << std::string(80, '#') << "\n\n";
 	std::cout << "Valid JSON files:\n";
-	for (auto& f : valid_json_files) {
-		std::cout << "  " << f << "\n";
+	if (valid_json_files.empty()){
+		std::cout << "  [WARNING] No valid JSON files found!\n";
+	}
+	else {
+		for (auto& f : valid_json_files) {
+			std::cout << "  " << f << "\n";
+		}
 	}
 	std::cout << "\nInvalid JSON files:\n";
-	for (auto& f : invalid_json_files) {
-		std::cout << "  " << f << "\n";
+	if (invalid_json_files.empty()) {
+		std::cout << "  [WARNING] No invalid JSON files found!\n";
+	}
+	else {
+		for (auto& f : invalid_json_files) {
+			std::cout << "  " << f << "\n";
+		}		
 	}
 	std::cout << std::string(80, '#') << "\n";
 	std::cout << "WARNING: This only checks JSON syntax. Further manual checks may be necessary.\n";
@@ -359,6 +369,7 @@ int main(int argc, char** argv)
 	{
 		case CommandKind::ROBOT_PARAM:
 			builder.printRobotParams();
+			save_json = false;
 		break;
 
 		case CommandKind::CLEAR_SCENE:
@@ -417,7 +428,9 @@ int main(int argc, char** argv)
 			double da = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 9]) : std::numeric_limits<double>::quiet_NaN();
 			double db = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 10]) : std::numeric_limits<double>::quiet_NaN();
 			double dc = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 11]) : std::numeric_limits<double>::quiet_NaN();
-			builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
+			if (exec_task == "true") {
+				builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
+			}
 			if (true) {
 				// Format:
 				//  "1713337863.463677": {
@@ -467,27 +480,43 @@ int main(int argc, char** argv)
 		case CommandKind::JOINTS_MOVE:
 		{
 			std::vector<double> joint_values;
+			nlohmann::json joint_map;
 			if (argc == (default_variables)) {
 				builder.jointsMove(joint_values);
-				return 1;
+
+				auto current_joints = builder.getCurrentJointPositions();
+
+				for (const auto& kv: current_joints) {
+					joint_map[kv.first] = kv.second;
+				}
 			}
-			if (argc != (default_variables + 6)) {
-				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
-				rclcpp::shutdown();
-				return 1;
+			else {
+				if (argc != (default_variables + 6)) {
+					RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: joints_move <j1> <j2> <j3> <j4> <j5> <j6>");
+					rclcpp::shutdown();
+					return 1;
+				}
+				// Check if argv[10] and argv[11] are non-numeric strings
+				if (!isNumeric(argv[task_variables + 1]) || !isNumeric(argv[task_variables + 2])) {
+					RCLCPP_ERROR(node->get_logger(),
+								"choose_pipeline: expected tip_frame and target_frame as non-numeric strings");
+					rclcpp::shutdown();
+					return 1;
+				}
+				// Assuming we have 6 joints
+				for (int i = (task_variables + 1); i < (task_variables + 7); ++i) {
+					joint_values.push_back(std::stod(argv[i]));
+				}
+				builder.jointsMove(joint_values);
+
+				joint_map["j1"] = std::stod(argv[task_variables + 1]);
+				joint_map["j2"] = std::stod(argv[task_variables + 2]);
+				joint_map["j3"] = std::stod(argv[task_variables + 3]);
+				joint_map["j4"] = std::stod(argv[task_variables + 4]);
+				joint_map["j5"] = std::stod(argv[task_variables + 5]);
+				joint_map["j6"] = std::stod(argv[task_variables + 6]);
 			}
-			// Check if argv[10] and argv[11] are non-numeric strings
-			if (!isNumeric(argv[task_variables + 1]) || !isNumeric(argv[task_variables + 2])) {
-				RCLCPP_ERROR(node->get_logger(),
-							"choose_pipeline: expected tip_frame and target_frame as non-numeric strings");
-				rclcpp::shutdown();
-				return 1;
-			}
-			// Assuming we have 6 joints
-			for (int i = (task_variables + 1); i < (task_variables + 7); ++i) {
-				joint_values.push_back(std::stod(argv[i]));
-			}
-			builder.jointsMove(joint_values);
+
 			if (true) {
 				// Format:
 				//  "1713337825.8489513": {
@@ -502,19 +531,13 @@ int main(int argc, char** argv)
 				//    }
 				//   }
 				//  }
-				nlohmann::json joint_map;
-				joint_map["j1"] = std::stod(argv[task_variables + 1]);
-				joint_map["j2"] = std::stod(argv[task_variables + 2]);
-				joint_map["j3"] = std::stod(argv[task_variables + 3]);
-				joint_map["j4"] = std::stod(argv[task_variables + 4]);
-				joint_map["j5"] = std::stod(argv[task_variables + 5]);
-				joint_map["j6"] = std::stod(argv[task_variables + 6]);
 				entry["joints_move"]["positions"] = joint_map;
 			}
 		}
 		break;
 
 		case CommandKind::ABSOLUTE_MOVE:
+		{
 			// Two modes: either 3 extra args (frame_id tip_frame target_frame) or 7 extra args (frame_id x y z rx ry rz rw)
 			if (argc == (default_variables + 3)) {
 				// Check if argv[10] to argv[12] are non-numeric strings
@@ -528,6 +551,7 @@ int main(int argc, char** argv)
 				std::string tip      = argv[task_variables + 2];
 				std::string target   = argv[task_variables + 3];
 				builder.absoluteMove(frame_id, tip, target);
+			
 			} else if (argc == (default_variables + 8)) {
 				// Check if argv[11] to argv[17] are all numeric values
 				bool numeric_args = true;
@@ -551,7 +575,7 @@ int main(int argc, char** argv)
 				double ry = std::stod(argv[task_variables + 6]);
 				double rz = std::stod(argv[task_variables + 7]);
 				double rw = std::stod(argv[task_variables + 8]);
-				builder.absoluteMove(frame_id, "", "", x, y, z, rx, ry, rz, rw);
+				builder.absoluteMove(frame_id, "wrist3_link", "", x, y, z, rx, ry, rz, rw);
 			} else {
 				RCLCPP_ERROR(node->get_logger(),
 							"Syntax Error! Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
@@ -592,6 +616,7 @@ int main(int argc, char** argv)
 				{ "quaternion", { rx, ry, rz, rw } }
 				};
 			}
+		}
 		break;
 
 		case CommandKind::DISPLACEMENT_MOVE:
@@ -617,7 +642,9 @@ int main(int argc, char** argv)
 			std::vector<double> rotation_vector;
 			for (int i = (task_variables + 6); i < (task_variables + 9); ++i)
 			rotation_vector.push_back(std::stod(argv[i]));
+			RCLCPP_ERROR(node->get_logger(),"Hello");
 			builder.displacementMove(world_frame, tip, translation_vector, rotation_vector);
+			RCLCPP_ERROR(node->get_logger(),"Hello2");
 			if (true) {
 				// Format:
 				//  "1713338342.2387867": {
@@ -636,13 +663,15 @@ int main(int argc, char** argv)
 				//    }
 				//   }
 				//  }
+
 				std::string frame_id = argv[task_variables + 1];
-				double tx  = std::stod(argv[task_variables + 2]);
-				double ty  = std::stod(argv[task_variables + 3]);
-				double tz  = std::stod(argv[task_variables + 4]);
-				double rx  = std::stod(argv[task_variables + 5]);
-				double ry  = std::stod(argv[task_variables + 6]);
-				double rz  = std::stod(argv[task_variables + 7]);
+				std::string tip_link = argv[task_variables + 2];
+				double tx  = std::stod(argv[task_variables + 3]);
+				double ty  = std::stod(argv[task_variables + 4]);
+				double tz  = std::stod(argv[task_variables + 5]);
+				double rx  = std::stod(argv[task_variables + 6]);
+				double ry  = std::stod(argv[task_variables + 7]);
+				double rz  = std::stod(argv[task_variables + 8]);
 				entry["displacement_move"][frame_id] = {
 				{ "translation",   	{ tx, ty, tz } },
 				{ "rotation", 		{ rx, ry, rz } }
@@ -761,6 +790,7 @@ int main(int argc, char** argv)
 		break;
 
 		case CommandKind::DETACH_OBJECT:
+		{
 			if (argc != (default_variables + 2)) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: detach_object <object_name> <link_name>");
 				rclcpp::shutdown();
@@ -778,6 +808,7 @@ int main(int argc, char** argv)
 				std::string link_name   = argv[task_variables + 2];
 				entry["detach_object"][object_name] = link_name;
 			}
+		}
 		break;
 
 		case CommandKind::DELETE_JSON_SIM_CONTENT:
@@ -829,18 +860,15 @@ int main(int argc, char** argv)
 			}
 
 			geometry_msgs::msg::Point start, end;
-			start.x = 		std::stod(argv[task_variables + 1]);
-			start.y = 		std::stod(argv[task_variables + 2]);
-			start.z = 		std::stod(argv[task_variables + 3]);
-			end.x = 		std::stod(argv[task_variables + 4]);
-			end.y = 		std::stod(argv[task_variables + 5]);
-			end.z = 		std::stod(argv[task_variables + 6]);
-			int num_steps = std::stoi(argv[task_variables + 7]);
-			if (num_steps < 2) {
-				num_steps = 2;	
-			}
+			std::string world_frame = argv[task_variables + 1];
+			start.x = 		std::stod(argv[task_variables + 2]);
+			start.y = 		std::stod(argv[task_variables + 3]);
+			start.z = 		std::stod(argv[task_variables + 4]);
+			end.x = 		std::stod(argv[task_variables + 5]);
+			end.y = 		std::stod(argv[task_variables + 6]);
+			end.z = 		std::stod(argv[task_variables + 7]);
 			// If TaskBuilder::scanLine is implemented, call it.
-			builder.scanLine(start, end);
+			builder.scanLine(world_frame, start, end);
 			if (true) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}

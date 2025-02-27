@@ -30,6 +30,8 @@ find_package(trajectory_msgs REQUIRED)
 # Add Eigen3 for spline interpolation
 find_package(Eigen3 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 ##############################################################################
 # Create library from shared source (task_builder.cpp)

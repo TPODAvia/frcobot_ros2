@@ -9,6 +9,9 @@
 #include <cmath>
 #include <cctype>
 #include <algorithm>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 namespace fs = std::filesystem;
 
@@ -834,7 +837,9 @@ void TaskBuilder::spawnObject(const std::string& object_name,
     std::string pkg_share;
     try {
         pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
-    } catch(...) { return; }
+    } catch(...) { 
+        return; 
+    }
     std::string data_file = pkg_share + "/memory/object_data.yaml";
     auto all_data = loadAllObjectData(data_file);
     all_data[object_name] = data;
@@ -891,53 +896,147 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 }
 
 void TaskBuilder::absoluteMove(const std::string& frame_id, 
-                                const std::string& tip_frame,
-                                const std::string& target_frame,
-                                double x, double y, double z,
-                                double rx, double ry, double rz, double rw)
+                               const std::string& tip_frame,
+                               const std::string& target_frame,
+                               double x, double y, double z,
+                               double rx, double ry, double rz, double rw)
 {
-    if (tip_frame != "" && target_frame != "") {
-        RCLCPP_INFO(node_->get_logger(),
-                    "[absolute_move] Using tip_frame=%s and target_frame=%s (no pose provided).",
-                    tip_frame.c_str(), target_frame.c_str());
-        auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_frames", current_solver_);
-        stage->setGroup(arm_group_name_);
-        stage->setGoal(target_frame);
-        stage->setIKFrame(frame_id);
-        task_.add(std::move(stage));
-        return;
-    }
-
-    if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
-        std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw)) {
-        RCLCPP_ERROR(node_->get_logger(),
-                    "[absolute_move] Invalid arguments: specify (tip_frame, target_frame) or (x, y, z, rx, ry, rz, rw).");
-        return;
-    }
-    
-    RCLCPP_INFO(node_->get_logger(),
-                "[absolute_move] Moving to pose (%.2f, %.2f, %.2f) with orientation (%.2f, %.2f, %.2f, %.2f) in frame_id=%s.",
-                x, y, z, rx, ry, rz, rw, frame_id.c_str());
-
+    // We will store the final goal pose in here once we figure it out
     geometry_msgs::msg::PoseStamped goal_pose_stamped;
-    goal_pose_stamped.header.frame_id = frame_id;
-    goal_pose_stamped.header.stamp = node_->now();
-    goal_pose_stamped.pose.position.x = x;
-    goal_pose_stamped.pose.position.y = y;
-    goal_pose_stamped.pose.position.z = z;
-    goal_pose_stamped.pose.orientation.x = rx;
-    goal_pose_stamped.pose.orientation.y = ry;
-    goal_pose_stamped.pose.orientation.z = rz;
-    goal_pose_stamped.pose.orientation.w = rw;
+    std::string task_name = "move_to_absolute_pose";
 
-    auto stage = std::make_unique<mtc::stages::MoveTo>("move_to_absolute_pose", current_solver_);
+    // If the user provides (tip_frame, target_frame) **and** they are non-empty
+    if (!tip_frame.empty() && !target_frame.empty()) 
+    {
+        RCLCPP_INFO(node_->get_logger(),
+                    "[absolute_move] Attempting to interpret tip_frame='%s' and target_frame='%s' (no direct x,y,z given).",
+                    tip_frame.c_str(), target_frame.c_str());
+        task_name = "move_to_frames";  // rename the stage for clarity
+
+        // -------------------------------------------------------------
+        // 1) If tip_frame == target_frame => get current tip pose
+        // -------------------------------------------------------------
+        if (false)
+        {
+            RCLCPP_INFO(node_->get_logger(),
+                        "[absolute_move] tip_frame == target_frame. Grabbing current tip pose...");
+
+            // Deactivated feature, reserved for the future release
+        }
+        else
+        {
+            // -------------------------------------------------------------
+            // 2) Check if target_frame is known in object_data.yaml
+            // -------------------------------------------------------------
+            bool loaded_from_memory = false;
+            try {
+                std::string pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+                std::string memory_dir = pkg_share + "/memory/";
+                std::string data_file  = memory_dir + "object_data.yaml";
+
+                auto all_objects = loadAllObjectData(data_file);
+                auto it = all_objects.find(target_frame);
+                if (it != all_objects.end())
+                {
+                    // Found a stored object with the same name as target_frame
+                    RCLCPP_INFO(node_->get_logger(),
+                                "[absolute_move] Found '%s' in object_data.yaml. Using its pose as goal.",
+                                target_frame.c_str());
+
+                    goal_pose_stamped.header.frame_id = frame_id;
+                    goal_pose_stamped.header.stamp = node_->now();
+                    goal_pose_stamped.pose = it->second.pose;
+                    loaded_from_memory = true;
+                }
+            }
+            catch(const std::exception& e) {
+                RCLCPP_ERROR(node_->get_logger(),
+                             "[absolute_move] Exception checking object_data.yaml: %s", e.what());
+            }
+
+            // -------------------------------------------------------------
+            // 3) If NOT loaded from memory, try TF lookup
+            // -------------------------------------------------------------
+            if (!loaded_from_memory)
+            {
+                RCLCPP_INFO(node_->get_logger(),
+                            "[absolute_move] Attempting TF lookup from frame '%s' -> '%s'.",
+                            frame_id.c_str(), target_frame.c_str());
+                try {
+                    // If you keep a tf2_ros::Buffer as a class member, use that.
+                    // Otherwise, create a local one (but you need a node with spinning).
+                    static tf2_ros::Buffer tf_buffer(node_->get_clock());
+                    static tf2_ros::TransformListener tf_listener(tf_buffer);
+
+                    geometry_msgs::msg::TransformStamped tf_transform = 
+                        tf_buffer.lookupTransform(frame_id, target_frame, rclcpp::Time(0), rclcpp::Duration(1,0)); // 1s timeout
+
+                    // Convert Transform -> Pose
+                    goal_pose_stamped.header.frame_id = frame_id;
+                    goal_pose_stamped.header.stamp = node_->now();
+                    goal_pose_stamped.pose.position.x = tf_transform.transform.translation.x;
+                    goal_pose_stamped.pose.position.y = tf_transform.transform.translation.y;
+                    goal_pose_stamped.pose.position.z = tf_transform.transform.translation.z;
+                    goal_pose_stamped.pose.orientation = tf_transform.transform.rotation;
+
+                    RCLCPP_INFO(node_->get_logger(),
+                                "[absolute_move] TF lookup success. Using transform as goal.");
+                }
+                catch (const tf2::TransformException &ex) {
+                    RCLCPP_ERROR(node_->get_logger(),
+                                 "[absolute_move] TF lookup failed: %s", ex.what());
+                    RCLCPP_ERROR(node_->get_logger(),
+                                 "[absolute_move] Could NOT resolve the pose for target_frame='%s'. Aborting.",
+                                 target_frame.c_str());
+                    return;
+                }
+            }
+        }
+    }
+    else
+    {
+        // ----------------------------------------------------------------
+        // 4) If x,y,z,rx,ry,rz,rw are provided => direct Cartesian target
+        // ----------------------------------------------------------------
+        if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
+            std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw))
+        {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "[absolute_move] Invalid arguments: either specify (tip_frame, target_frame) OR (x,y,z,rx,ry,rz,rw).");
+            return;
+        }
+        
+        RCLCPP_INFO(node_->get_logger(),
+                    "[absolute_move] Using direct pose: (%.2f, %.2f, %.2f) orientation (%.2f, %.2f, %.2f, %.2f) in frame_id='%s'.",
+                    x, y, z, rx, ry, rz, rw, frame_id.c_str());
+
+        goal_pose_stamped.header.frame_id = frame_id;
+        goal_pose_stamped.header.stamp = node_->now();
+        goal_pose_stamped.pose.position.x = x;
+        goal_pose_stamped.pose.position.y = y;
+        goal_pose_stamped.pose.position.z = z;
+        goal_pose_stamped.pose.orientation.x = rx;
+        goal_pose_stamped.pose.orientation.y = ry;
+        goal_pose_stamped.pose.orientation.z = rz;
+        goal_pose_stamped.pose.orientation.w = rw;
+    }
+
+    if (!current_solver_) {
+        RCLCPP_ERROR(node_->get_logger(), "[absolute_move] No active solver set. Use choosePipeline() first.");
+        return;
+    }
+
+    auto stage = std::make_unique<mtc::stages::MoveTo>(task_name, current_solver_);
     stage->setGroup(arm_group_name_);
+    stage->setTimeout(5.0);
+    if (!tip_frame.empty())
+        stage->setIKFrame(tip_frame);
+
     stage->setGoal(goal_pose_stamped);
-    stage->setIKFrame(tip_frame != "None" ? tip_frame : frame_id);
-    stage->setTimeout(10.0);
 
     task_.add(std::move(stage));
 }
+
 
 void TaskBuilder::displacementMove(const std::string& world_frame, 
                                     const std::string& tip_frame,

@@ -33,14 +33,14 @@ export RCUTILS_COLORIZED_OUTPUT=1
 
 ## Usage
 
-### Launch MoveIt Task Constructor
-```bash
-ros2 launch fairino_mtc_demo mtc_builder.launch.py
-```
-
 ### Launch MoveIt Simulation
 ```bash
 ros2 launch fairino_mtc_demo moveit_sim.launch.py
+```
+
+### Launch MoveIt Task Constructor
+```bash
+ros2 launch fairino_mtc_demo mtc_builder.launch.py
 ```
 
 ### Execute Joint Movements

@@ -8,7 +8,7 @@ import os
 packagename = "fairino10_v6_moveit2_config"
 robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
-tip_frame = "wrist3_link"
+tip_frame = "tip_link"
 exec_task = False
 save_json = True
 reserved_1 = False # this could be for velosity limit
@@ -51,35 +51,34 @@ def generate_launch_description():
                 # "remove_object", "sphere"
                 # "remove_object", "cone"
                 # "spawn_object", "cylinder"
-                # "spawn_object", "cylinder", "0.25", "0.25", "0.45", "1", "0", "0", "0",    "0.1", "0.02", "0.0"
+                # "spawn_object", "cylinder", "0.25", "0.25", "1.0", "0", "0", "0", "1",    "0.1", "0.02", "0.0"
                 # "spawn_object", "box",      "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.05", "0.05"
                 # "spawn_object", "sphere",   "1", "1", "1", "1", "0", "0", "0",    "0.05", "0.0", "0.0"
                 # "spawn_object", "cone",     "1", "1", "1", "0", "0", "0", "1",    "0.15", "0.05", "0.0"
-                # "attach_object", "cylinder", tip_frame
-                # "detach_object", "cylinder", tip_frame
+                # "attach_object", "cylinder", tip_frame 
                 # "gripper_open"
-                "gripper_close"
+                # "gripper_close"
                 # "joints_move"
                 # "joints_move", "0.47", "-1.25", "0.056", "0.47", "1.3", "0"
-                # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0","0", "1.1"
+                # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0.0","0.0", "1.1"
                 # "check_json_files", default_json_path
                 # "delete_json_sim_content", json_sim_content
                 # "delete_json_temp", default_json_path
 
-                # "absolute_move", "world", "0.25", "0.1", "0.5", "0", "0", "0", "1"
-                # "absolute_move", "world", tip_frame, "wrist3_link"
+                # "absolute_move", "world", "0.25", "0.25", "1.0", "0", "0", "0", "1"
+                # "absolute_move", "world", tip_frame, "tip_link"
                 # "absolute_move", "world", tip_frame, "cylinder"
-                # "absolute_move", "world", "0.5", "0.5"
 
-                # "choose_pipeline", "ompl", "RRTConnect"
+                # "choose_pipeline", "ompl", "RRTConnect" # Too unpredictable movement, move too fast
                 # "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
 
-                # The functionalities below are not working
-                # "trajectory_move", trajectoy_file
+                "scan_line", "world", "0.5", "0.1", "0.5", "0.25", "0.25", "0.3"
+                # "calibrate_camera", "0.2", "0.2", "0.5" # Too fast
+                # "trajectory_move", trajectoy_file # This also
+                
+                # The functionalities below are not implemented
                 # "feedback_move", "mode" 
                 # "collaborative_move", "mode"
-                # "scan_line", "0.5", "0.1", "0.5", "0", "0", "0"
-                # "calibate_camera", "0.5", "0.1", "0.5"
                 # "gcode_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"
                 # "step_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/model2.stp"
             ]         

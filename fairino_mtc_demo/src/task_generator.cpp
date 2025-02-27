@@ -852,7 +852,7 @@ int main(int argc, char** argv)
 
 		case CommandKind::SCAN_LINE:
 		{
-			if (argc != (default_variables + 6)) {
+			if (argc != (default_variables + 7)) {
 				RCLCPP_ERROR(node->get_logger(),
 							"Syntax Error! Usage: scan_line <x1> <y1> <z1> <x2> <y2> <z2> <num_steps>");
 				rclcpp::shutdown();
@@ -868,10 +868,11 @@ int main(int argc, char** argv)
 			end.y = 		std::stod(argv[task_variables + 6]);
 			end.z = 		std::stod(argv[task_variables + 7]);
 			// If TaskBuilder::scanLine is implemented, call it.
-			builder.scanLine(world_frame, start, end);
+			builder.scanLine(world_frame, tip_frame, start, end);
 			if (true) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
+			save_json = false;
 		}
 		break;
 
@@ -887,10 +888,11 @@ int main(int argc, char** argv)
 			double y = std::stod(argv[task_variables + 2]);
 			double z = std::stod(argv[task_variables + 3]);
 			// The orientation is not used in our simple example.
-			builder.calibrateCamera(x, y, z);
+			builder.calibrateCamera(tip_frame, x, y, z);
 			if (true) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
+			save_json = false;
 		}
 		break;
 
@@ -916,6 +918,7 @@ int main(int argc, char** argv)
 			if (true) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
+			save_json = false;
 		}
 		break;
 
@@ -940,6 +943,7 @@ int main(int argc, char** argv)
 			if (true) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
+			save_json = false;
 		}
 		break;
 

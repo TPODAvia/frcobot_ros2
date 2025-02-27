@@ -33,6 +33,22 @@
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
 
+#include <moveit/robot_state/robot_state.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
+#include <thread>
+#include <sstream>
+#include <cmath>
+#include <cctype>
+#include <algorithm>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <random>
+
+
 namespace mtc = moveit::task_constructor;
 
 /** 
@@ -151,12 +167,12 @@ public:
 
     // Moves straight line from point A to B, orientation forced to [0,0,0,1].
     // After finishing, print "Scan Finish".
-    void scanLine(std::string world_frame, const geometry_msgs::msg::Point& start,
+    void scanLine(std::string world_frame, std::string tip_frame, const geometry_msgs::msg::Point& start,
                     const geometry_msgs::msg::Point& end);
 
     // Moves the end-effector "arbitrarily" but keeps it pointed at the 3D point [x,y,z]
     // relative to 'base_link'. (Simplified example with a fixed path.)
-    void calibrateCamera(double x, double y, double z);
+    void calibrateCamera(std::string tip_frame, double x, double y, double z);
 
     // Loads G-code from file. We handle 3 user options: "CNC", "Weld", "3D Print".
     // Then convert the G-code lines to a path and make the robot follow them.
@@ -196,6 +212,8 @@ private:
     std::vector<std::string> joint_names_;
     std::unordered_map<std::string, double> current_joint_positions_;
 
+    geometry_msgs::msg::Quaternion initial_orientation_;
+
     bool executed_{false};
 
     // The callback that updates current_joint_positions_
@@ -204,7 +222,7 @@ private:
     // Loads the solver configuration from a YAML file and sets the current_solver_.
     bool loadSolverConfig(const std::string& file_path);
 
-    bool planAndExecute(const std::vector<geometry_msgs::msg::PoseStamped>& waypoints,
+    bool planWaypoints(const std::vector<geometry_msgs::msg::PoseStamped>& waypoints,
                         double velocity_scale,
                         double accel_scale,
                         double pose_tolerance);
@@ -215,11 +233,105 @@ private:
     static void saveObjectLocations(const std::string& file_path,
                                     const std::map<std::string, geometry_msgs::msg::Pose>& object_map);
 
-    std::vector<geometry_msgs::msg::PoseStamped> parseCsv(const std::string& csv_file);
-
     void feedbackPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
     
     void torqueFeedbackCallback(const std_msgs::msg::String::SharedPtr msg);
 
     void recordPose(const geometry_msgs::msg::Pose& pose, const std::string& filename);
+
+
+    // Helper: compute orientation that points +Z to (targetX, targetY, targetZ) from (baseX, baseY, baseZ)
+    static geometry_msgs::msg::Quaternion lookAtOrientation(double baseX, double baseY, double baseZ,
+                                                            double targetX, double targetY, double targetZ)
+    {
+        // We want the +Z axis to point from base -> target
+        tf2::Vector3 zAxis(0.0, 0.0, 1.0);
+        tf2::Vector3 dir(targetX - baseX, targetY - baseY, targetZ - baseZ);
+
+        // Avoid zero-length
+        if (dir.length2() < 1e-10) {
+            // Fallback to identity orientation if the target is the same as base
+            geometry_msgs::msg::Quaternion q;
+            q.x = 0.0; q.y = 0.0; q.z = 0.0; q.w = 1.0;
+            return q;
+        }
+        dir.normalize();
+
+        // Axis = cross( zAxis, dir ), angle = acos( dot(zAxis, dir) )
+        double dot = zAxis.dot(dir);
+        // clamp dot to [-1,1]
+        if (dot > 1.0) dot = 1.0;
+        if (dot < -1.0) dot = -1.0;
+
+        double angle = std::acos(dot);
+        tf2::Vector3 axis = zAxis.cross(dir);
+        if (axis.length2() < 1e-16) {
+            // zAxis and dir are nearly parallel or antiparallel
+            // If dot < 0 => 180 deg rotation about x or y
+            // If dot > 0 => angle=0 => identity
+            if (dot < 0.0) {
+                // 180 deg around X (or Y). Let's pick X
+                axis = tf2::Vector3(1.0, 0.0, 0.0);
+                angle = M_PI;
+            } else {
+                // 0 deg => identity
+                geometry_msgs::msg::Quaternion q;
+                q.x = 0.0; q.y = 0.0; q.z = 0.0; q.w = 1.0;
+                return q;
+            }
+        }
+        axis.normalize();
+
+        tf2::Quaternion q(axis, angle);
+        q.normalize();
+
+        geometry_msgs::msg::Quaternion q_msg;
+        q_msg.x = q.x();
+        q_msg.y = q.y();
+        q_msg.z = q.z();
+        q_msg.w = q.w();
+        return q_msg;
+    }
+
+    // Helper to parse CSV waypoints
+    std::vector<geometry_msgs::msg::PoseStamped> parseCsv(const std::string& csv_file)
+    {
+        std::vector<geometry_msgs::msg::PoseStamped> waypoints;
+        std::ifstream infile(csv_file);
+        if (!infile.is_open()) {
+            RCLCPP_ERROR(node_->get_logger(), "Could not open CSV file: %s", csv_file.c_str());
+            return waypoints;
+        }
+        std::string line;
+        while (std::getline(infile, line))
+        {
+            if (line.empty()) continue;
+            std::istringstream ss(line);
+            std::string token;
+            std::vector<double> values;
+            while (std::getline(ss, token, ',')) {
+                try {
+                    values.push_back(std::stod(token));
+                } catch (...) {
+                    RCLCPP_WARN(node_->get_logger(), "Invalid number in CSV file: %s", token.c_str());
+                }
+            }
+            if (values.size() < 3) continue;
+            geometry_msgs::msg::PoseStamped pose_stamped;
+            pose_stamped.header.frame_id = "world";
+            pose_stamped.header.stamp = node_->now();
+            pose_stamped.pose.position.x = values[0];
+            pose_stamped.pose.position.y = values[1];
+            pose_stamped.pose.position.z = values[2];
+            // Default orientation
+            pose_stamped.pose.orientation.x = 0;
+            pose_stamped.pose.orientation.y = 0;
+            pose_stamped.pose.orientation.z = 0;
+            pose_stamped.pose.orientation.w = 1;
+            waypoints.push_back(pose_stamped);
+        }
+        infile.close();
+        return waypoints;
+    }
+    
 };

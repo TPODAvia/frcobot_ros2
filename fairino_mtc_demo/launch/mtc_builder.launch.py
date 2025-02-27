@@ -9,7 +9,7 @@ packagename = "fairino10_v6_moveit2_config"
 robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
 tip_frame = "tip_link"
-exec_task = False
+exec_task = True
 save_json = True
 reserved_1 = False # this could be for velosity limit
 reserved_2 = False # this could be for acceleration limit
@@ -72,8 +72,9 @@ def generate_launch_description():
                 # "choose_pipeline", "ompl", "RRTConnect" # Too unpredictable movement, move too fast
                 # "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
 
-                "scan_line", "world", "0.5", "0.1", "0.5", "0.25", "0.25", "0.3"
-                # "calibrate_camera", "0.2", "0.2", "0.5" # Too fast
+                # "calibrate_camera", "0.2", "6.2", "0.5" # Remove te json saving
+
+                "scan_line", "world", "0.5", "0.1", "0.5", "0.25", "0.25", "0.5" # Not done
                 # "trajectory_move", trajectoy_file # This also
                 
                 # The functionalities below are not implemented

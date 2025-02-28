@@ -133,6 +133,8 @@ TaskBuilder::TaskBuilder(rclcpp::Node::SharedPtr node,
         "/joint_states",
         qos_profile,
         std::bind(&TaskBuilder::jointStateCallback, this, std::placeholders::_1));
+
+    executed_ = true;
 }
 
 void TaskBuilder::jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -147,6 +149,7 @@ void TaskBuilder::jointStateCallback(const sensor_msgs::msg::JointState::SharedP
             current_joint_positions_[msg->name[i]] = msg->position[i];
         }
     }
+    executed_ = true;
 }
 
 void TaskBuilder::newTask(const std::string& task_name)
@@ -164,6 +167,7 @@ void TaskBuilder::newTask(const std::string& task_name)
     // Always start with a CurrentState stage as the first stage
     auto current_state_stage = std::make_unique<mtc::stages::CurrentState>("current state");
     task_.add(std::move(current_state_stage));
+    executed_ = true;
 }
 
 void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
@@ -178,6 +182,7 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
         RCLCPP_ERROR(node_->get_logger(),
                      "Failed to get package share directory for 'fairino_mtc_demo': %s",
                      e.what());
+        executed_ = false;
         return;
     }
 
@@ -190,6 +195,7 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
             RCLCPP_ERROR(node_->get_logger(),
                          "Failed to create memory directory: %s",
                          e.what());
+            executed_ = false;
             return;
         }
     }
@@ -205,8 +211,8 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     {
         if (planner_id == "PTP")
         {
-            config["max_velocity_scaling_factor"] = 0.5;
-            config["max_acceleration_scaling_factor"] = 0.5;
+            config["max_velocity_scaling_factor"] = 0.3;
+            config["max_acceleration_scaling_factor"] = 0.3;
         }
         else if (planner_id == "LIN")
         {
@@ -222,13 +228,13 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     {
         if (planner_id == "RRTConnect")
         {
-            config["max_velocity_scaling_factor"] = 0.6;
-            config["max_acceleration_scaling_factor"] = 0.6;
+            config["max_velocity_scaling_factor"] = 0.2;
+            config["max_acceleration_scaling_factor"] = 0.2;
         }
         else if (planner_id == "PRM")
         {
-            config["max_velocity_scaling_factor"] = 0.7;
-            config["max_acceleration_scaling_factor"] = 0.7;
+            config["max_velocity_scaling_factor"] = 0.3;
+            config["max_acceleration_scaling_factor"] = 0.3;
         }
         else
         {
@@ -245,6 +251,7 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     {
         RCLCPP_ERROR(node_->get_logger(),
                      "Failed to save solver configuration: pipeline_name or planner_id is unknown");
+        executed_ = false;
         return;
     }
 
@@ -260,13 +267,17 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
         RCLCPP_ERROR(node_->get_logger(),
                      "Failed to save solver configuration: %s",
                      e.what());
+        executed_ = false;
+        return;
     }
+    executed_ = true;
 }
 
 bool TaskBuilder::loadSolverConfig(const std::string& file_path)
 {
     if (!fs::exists(file_path)) {
         RCLCPP_WARN(node_->get_logger(), "Solver configuration file %s does not exist.", file_path.c_str());
+        executed_ = false;
         return false;
     }
 
@@ -274,6 +285,7 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
         YAML::Node config = YAML::LoadFile(file_path);
         if (!config["pipeline_name"]) {
             RCLCPP_WARN(node_->get_logger(), "Missing 'pipeline_name' in config YAML.");
+            executed_ = false;
             return false;
         }
 
@@ -282,6 +294,7 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
 
         if (!config["planner_id"]) {
             RCLCPP_WARN(node_->get_logger(), "Missing 'planner_id' in config YAML.");
+            executed_ = false;
             return false;
         }
 
@@ -298,13 +311,16 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
         }
         else {
             RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name in config: %s", pipeline_name.c_str());
+            executed_ = false;
             return false;
         }
 
+        executed_ = true;
         return true;
     }
     catch (const std::exception& e) {
         RCLCPP_ERROR(node_->get_logger(), "Failed to load solver configuration: %s", e.what());
+        executed_ = false;
         return false;
     }
 }
@@ -367,8 +383,10 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
     }
     else {
         RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name: %s", pipeline_name.c_str());
+        executed_ = false;
         return;
     }
+    executed_ = true;
 }
 
 void TaskBuilder::printRobotParams() const
@@ -444,6 +462,7 @@ void TaskBuilder::printRobotParams() const
     for (const auto& kv : current_joint_positions_) {
         RCLCPP_INFO(node_->get_logger(), "  %s: %f", kv.first.c_str(), kv.second);
     }
+    const_cast<TaskBuilder*>(this)->executed_ = true;
 }
 
 void TaskBuilder::clearScene()
@@ -455,6 +474,7 @@ void TaskBuilder::clearScene()
 
     if (object_ids.empty()) {
         RCLCPP_INFO(node_->get_logger(), "No collision objects found in the scene to remove.");
+        executed_ = false;
         return;
     }
 
@@ -471,6 +491,7 @@ void TaskBuilder::clearScene()
             RCLCPP_WARN(node_->get_logger(), " - %s", obj.c_str());
         }
     }
+    executed_ = true;
 }
 
 // If you want to store each object in a more detailed structure:
@@ -608,6 +629,7 @@ void TaskBuilder::removeObject(const std::string& object_name)
     auto known_objects = psi.getKnownObjectNames();
     if (std::find(known_objects.begin(), known_objects.end(), object_name) == known_objects.end()) {
         RCLCPP_ERROR(node_->get_logger(), "Object '%s' not found in the scene.", object_name.c_str());
+        executed_ = false;
         return;
     }
 
@@ -615,6 +637,7 @@ void TaskBuilder::removeObject(const std::string& object_name)
     auto object_map = psi.getObjects({object_name});
     if (object_map.find(object_name) == object_map.end()) {
         RCLCPP_ERROR(node_->get_logger(), "Object '%s' not found in the scene map.", object_name.c_str());
+        executed_ = false;
         return;
     }
     
@@ -673,6 +696,7 @@ void TaskBuilder::removeObject(const std::string& object_name)
         RCLCPP_ERROR(node_->get_logger(),
                      "Failed to get package share directory for 'fairino_mtc_demo': %s",
                      e.what());
+        executed_ = false;
         return;
     }
     std::string memory_dir = package_share_directory + "/memory/";
@@ -681,6 +705,7 @@ void TaskBuilder::removeObject(const std::string& object_name)
             fs::create_directories(memory_dir);
         } catch (const fs::filesystem_error& e) {
             RCLCPP_ERROR(node_->get_logger(), "Failed to create memory directory: %s", e.what());
+            executed_ = false;
             return;
         }
     }
@@ -695,6 +720,7 @@ void TaskBuilder::removeObject(const std::string& object_name)
 
     RCLCPP_INFO(node_->get_logger(), "Saved object '%s' info (pose, shape, dims) to %s", 
                 object_name.c_str(), object_data_file.c_str());
+    executed_ = true;
 }
 
 void TaskBuilder::spawnObject(const std::string& object_name,
@@ -741,6 +767,7 @@ void TaskBuilder::spawnObject(const std::string& object_name,
             pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
         } catch(...) {
             RCLCPP_ERROR(node_->get_logger(), "Failed to get share dir for fairino_mtc_demo. Aborting spawn.");
+            executed_ = false;
             return;
         }
         std::string memory_dir = pkg_share + "/memory/";
@@ -751,6 +778,7 @@ void TaskBuilder::spawnObject(const std::string& object_name,
             RCLCPP_ERROR(node_->get_logger(),
                 "No extended data for '%s' found in memory file %s. Cannot spawn.",
                 object_name.c_str(), data_file.c_str());
+            executed_ = false;
             return;
         }
         // Overwrite with saved data
@@ -767,6 +795,7 @@ void TaskBuilder::spawnObject(const std::string& object_name,
 
     if (data.shape.empty() || data.shape == "unknown") {
         RCLCPP_ERROR(node_->get_logger(), "Shape not recognized. Abort spawn.");
+        executed_ = false;
         return;
     }
 
@@ -800,6 +829,7 @@ void TaskBuilder::spawnObject(const std::string& object_name,
         prim.dimensions[shape_msgs::msg::SolidPrimitive::CONE_RADIUS] = data.dimensions[1];
     } else {
         RCLCPP_ERROR(node_->get_logger(), "Unsupported shape: %s", data.shape.c_str());
+        executed_ = false;
         return;
     }
     object.primitives.push_back(prim);
@@ -817,12 +847,14 @@ void TaskBuilder::spawnObject(const std::string& object_name,
     try {
         pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
     } catch(...) { 
+        executed_ = false;
         return; 
     }
     std::string data_file = pkg_share + "/memory/object_data.yaml";
     auto all_data = loadAllObjectData(data_file);
     all_data[object_name] = data;
     saveAllObjectData(data_file, all_data);
+    executed_ = true;
 }
 
 void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
@@ -839,12 +871,14 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
                     RCLCPP_INFO(node_->get_logger(), "  Joint %s: %f",
                                 joint_name.c_str(), current_joint_positions_[joint_name]);
                 }
+                executed_ = true;
                 return;
             }
             RCLCPP_WARN(node_->get_logger(), "No joint positions received yet. Retrying...");
             rclcpp::sleep_for(std::chrono::milliseconds(sleep_ms));
         }
         RCLCPP_ERROR(node_->get_logger(), "Failed to receive joint states after %d retries. Aborting.", max_retries);
+        executed_ = false;
         return;
     }
 
@@ -853,6 +887,7 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
         RCLCPP_ERROR(node_->get_logger(),
                      "jointsMove() called with %zu values, but expects %zu joints",
                      joint_values.size(), joint_names_.size());
+        executed_ = false;
         return;
     }
 
@@ -863,6 +898,7 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 
     if (!current_solver_) {
         RCLCPP_ERROR(node_->get_logger(), "No active solver selected. Use choosePipeline() first.");
+        executed_ = false;
         return;
     }
 
@@ -872,6 +908,7 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
     stage->setTimeout(10.0);
 
     task_.add(std::move(stage));
+    executed_ = true;
 }
 
 void TaskBuilder::absoluteMove(const std::string& frame_id, 
@@ -946,6 +983,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
                 RCLCPP_ERROR(node_->get_logger(),
                              "[absolute_move] Could NOT resolve pose for target_frame='%s'. Aborting.",
                              target_frame.c_str());
+                executed_ = false;
                 return;
             }
         }
@@ -958,6 +996,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
         {
             RCLCPP_ERROR(node_->get_logger(),
                          "[absolute_move] Invalid args: specify (tip_frame,target_frame) or (x,y,z,rx,ry,rz,rw).");
+            executed_ = false;
             return;
         }
         
@@ -978,6 +1017,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
 
     if (!current_solver_) {
         RCLCPP_ERROR(node_->get_logger(), "[absolute_move] No active solver set. Use choosePipeline() first.");
+        executed_ = false;
         return;
     }
 
@@ -990,6 +1030,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
     stage->setGoal(goal_pose_stamped);
 
     task_.add(std::move(stage));
+    executed_ = true;
 }
 
 void TaskBuilder::displacementMove(const std::string& world_frame, 
@@ -1000,6 +1041,7 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
     if (translation_vector.size() != 3 || rotation_vector.size() != 3) {
         RCLCPP_ERROR(node_->get_logger(),
                      "displacementMove() requires exactly 3 elements for translation and 3 for rotation");
+        executed_ = false;
         return;
     }
 
@@ -1013,6 +1055,7 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
     if (is_translation_zero && is_rotation_zero) {
         RCLCPP_WARN(node_->get_logger(), 
                     "Both translation and rotation vectors are zero. Nothing to do.");
+        executed_ = false;
         return;
     }
 
@@ -1051,6 +1094,7 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
 
         task_.add(std::move(stage_rotate));
     }
+    executed_ = true;
 }
 
 void TaskBuilder::trajectoryMove(const std::string& csv_file,
@@ -1066,12 +1110,14 @@ void TaskBuilder::trajectoryMove(const std::string& csv_file,
     std::vector<geometry_msgs::msg::PoseStamped> waypoints = parseCsv(csv_file);
     if (waypoints.empty()) {
         RCLCPP_ERROR(node_->get_logger(), "No valid waypoints from CSV. Aborting trajectoryMove.");
+        executed_ = false;
         return;
     }
 
     // Instead of direct computeCartesianPath + execution, just add these waypoints as MTC stages:
     planWaypoints(waypoints, velocity_scale, accel_scale, pose_tolerance);
     // (Remember: "planWaypoints" below now only ADDS the stages; it does not run them.)
+    executed_ = true;
 }
 
 void TaskBuilder::feedbackPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
@@ -1087,6 +1133,7 @@ void TaskBuilder::feedbackPoseCallback(const geometry_msgs::msg::PoseStamped::Sh
 
     // Just add the stage (no direct execution)
     planWaypoints(single_target, 0.5, 0.5, 0.01);
+    executed_ = true;
 }
 
 void TaskBuilder::feedbackMove(const std::string& pose_topic)
@@ -1108,6 +1155,7 @@ void TaskBuilder::feedbackMove(const std::string& pose_topic)
                 "feedback_move: done waiting. Unsubscribing from %s.",
                 pose_topic.c_str());
     feedback_sub_.reset();
+    executed_ = true;
 }
 
 void TaskBuilder::attachObject(const std::string& object_name, const std::string& link_name)
@@ -1115,6 +1163,7 @@ void TaskBuilder::attachObject(const std::string& object_name, const std::string
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
     stage->attachObject(object_name, link_name);
     task_.add(std::move(stage));
+    executed_ = true;
 }
 
 void TaskBuilder::detachObject(const std::string& object_name, const std::string& link_name)
@@ -1122,18 +1171,21 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("detach object");
     stage->detachObject(object_name, link_name);
     task_.add(std::move(stage));
+    executed_ = true;
 }
 
 void TaskBuilder::gripperClose()
 {
     RCLCPP_INFO(node_->get_logger(), "[gripper_close] Called");
     RCLCPP_ERROR(node_->get_logger(), "[gripper_close] have no action implemented yet.");
+    executed_ = false;
 }
 
 void TaskBuilder::gripperOpen()
 {
     RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
     RCLCPP_ERROR(node_->get_logger(), "[gripper_open] have no action implemented yet.");
+    executed_ = false;
 }
 
 void TaskBuilder::collaborativeMove(const std::string& torque_topic, const std::string& record_filename)
@@ -1153,16 +1205,14 @@ void TaskBuilder::collaborativeMove(const std::string& torque_topic, const std::
         dummy_pose.position.x = 0.0;
         dummy_pose.position.y = 0.0;
         dummy_pose.position.z = 0.0;
-        dummy_pose.orientation.x = 0.0;
-        dummy_pose.orientation.y = 0.0;
-        dummy_pose.orientation.z = 0.0;
-        dummy_pose.orientation.w = 1.0;
+        dummy_pose.orientation = initial_orientation_;
         recordPose(dummy_pose, record_filename);
         rclcpp::sleep_for(std::chrono::milliseconds(100));
     }
     RCLCPP_INFO(node_->get_logger(),
                 "collaborative_move: finished. Motion was recorded to %s.",
                 record_filename.c_str());
+    executed_ = true;
 }
 
 void TaskBuilder::torqueFeedbackCallback(const std_msgs::msg::String::SharedPtr msg)
@@ -1170,6 +1220,7 @@ void TaskBuilder::torqueFeedbackCallback(const std_msgs::msg::String::SharedPtr 
     RCLCPP_INFO(node_->get_logger(),
                 "[torqueFeedbackCallback] Received torque feedback: %s",
                 msg->data.c_str());
+    executed_ = true;
 }
 
 void TaskBuilder::recordPose(const geometry_msgs::msg::Pose& pose, const std::string& filename)
@@ -1178,6 +1229,7 @@ void TaskBuilder::recordPose(const geometry_msgs::msg::Pose& pose, const std::st
     if (!outfile.is_open()) {
         RCLCPP_ERROR(node_->get_logger(),
                      "Could not open file %s for recording pose", filename.c_str());
+        executed_ = false;
         return;
     }
     outfile << pose.position.x << "," << pose.position.y << "," << pose.position.z << ","
@@ -1185,6 +1237,7 @@ void TaskBuilder::recordPose(const geometry_msgs::msg::Pose& pose, const std::st
             << "\n";
     outfile.close();
     RCLCPP_INFO(node_->get_logger(), "Recorded pose to %s", filename.c_str());
+    executed_ = true;
 }
 
 std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& gcode_file,
@@ -1195,6 +1248,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& 
     if (!file.is_open())
     {
         RCLCPP_ERROR(node_->get_logger(), "Failed to open G-code file: %s", gcode_file.c_str());
+        executed_ = false;
         return {};
     }
     std::string raw_line;
@@ -1220,6 +1274,8 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& 
 
     double x = 0.0, y = 0.0, z = 0.0;
     std::vector<geometry_msgs::msg::Pose> path;
+
+    RCLCPP_ERROR(node_->get_logger(), "THE ORIENTATION IS THE DEFAULT!");
     for (auto& c : all_commands)
     {
         if (c.code == "G0" || c.code == "G1")
@@ -1242,6 +1298,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::gcodeLoad(const std::string& 
             path.push_back(pose);
         }
     }
+    executed_ = true;
     return path;
 }
 
@@ -1252,6 +1309,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
     if (!file.is_open())
     {
         RCLCPP_ERROR(node_->get_logger(), "stepLoad: could not open file: %s", step_file.c_str());
+        executed_ = false;
         return result;
     }
     std::vector<std::string> lines;
@@ -1273,6 +1331,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
     if (spline_ref.empty())
     {
         RCLCPP_ERROR(node_->get_logger(), "No B_SPLINE_CURVE_WITH_KNOTS found in %s", step_file.c_str());
+        executed_ = false;
         return result;
     }
 
@@ -1282,12 +1341,14 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
         if (startPos == std::string::npos)
         {
             RCLCPP_ERROR(node_->get_logger(), "Could not parse control points list.");
+            executed_ = false;
             return result;
         }
         auto endPos = spline_ref.find(")", startPos);
         if (endPos == std::string::npos)
         {
             RCLCPP_ERROR(node_->get_logger(), "Could not parse control points list (no closing parenthesis).");
+            executed_ = false;
             return result;
         }
         std::string refs = spline_ref.substr(startPos, endPos - startPos);
@@ -1308,6 +1369,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
     if (cartesian_refs.empty())
     {
         RCLCPP_ERROR(node_->get_logger(), "No cartesian point references found.");
+        executed_ = false;
         return result;
     }
     struct Point3 { double x, y, z; };
@@ -1349,10 +1411,12 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
     if (control_points.size() < 2)
     {
         RCLCPP_ERROR(node_->get_logger(), "Not enough control points to form a curve.");
+        executed_ = false;
         return result;
     }
     // Simple linear interpolation among control points
     int num_samples = 20;
+    RCLCPP_ERROR(node_->get_logger(), "THE ORIENTATION IS THE DEFAULT!");
     for (int i = 0; i < num_samples; ++i)
     {
         double t = static_cast<double>(i) / (num_samples - 1);
@@ -1375,6 +1439,7 @@ std::vector<geometry_msgs::msg::Pose> TaskBuilder::stepLoad(const std::string& s
         pose.orientation.w = 1.0;
         result.push_back(pose);
     }
+    executed_ = true;
     return result;
 }
 
@@ -1387,6 +1452,36 @@ void TaskBuilder::scanLine(std::string world_frame, std::string tip_frame,
                 "[scanLine] from (%.2f, %.2f, %.2f) to (%.2f, %.2f, %.2f)",
                 start.x, start.y, start.z,
                 end.x,   end.y,   end.z);
+
+    // ---------------------------------------------------------
+    // Capture the robot's current tip-frame orientation via TF
+    // from the manipulator's base (e.g., "base_link") to the end effector.
+    // ---------------------------------------------------------
+    static tf2_ros::Buffer tf_buffer(node_->get_clock());
+    static tf2_ros::TransformListener tf_listener(tf_buffer);
+
+    try {
+        // Look up the transform from the base frame to the tip frame.
+        // Adjust "base_link" if your base frame has a different name.
+        geometry_msgs::msg::TransformStamped tf_transform =
+            tf_buffer.lookupTransform("world", "tip_link", rclcpp::Time(0), rclcpp::Duration(1, 0));
+
+        initial_orientation_.x = tf_transform.transform.rotation.x;
+        initial_orientation_.y = tf_transform.transform.rotation.y;
+        initial_orientation_.z = tf_transform.transform.rotation.z;
+        initial_orientation_.w = tf_transform.transform.rotation.w;
+        RCLCPP_INFO(node_->get_logger(),
+                    "[initTask] Obtained initial orientation from TF: (%.3f, %.3f, %.3f, %.3f)",
+                    initial_orientation_.x,
+                    initial_orientation_.y,
+                    initial_orientation_.z,
+                    initial_orientation_.w);
+    }
+    catch (const tf2::TransformException &ex) {
+        RCLCPP_ERROR(node_->get_logger(), "[initTask] TF lookup failed: %s", ex.what());
+        // Fallback to identity orientation if the lookup fails.
+        executed_ = false;
+    }
 
     //
     // 1) Create local planners: OMPL & Pilz LIN
@@ -1416,12 +1511,23 @@ void TaskBuilder::scanLine(std::string world_frame, std::string tip_frame,
     stampedA.header.frame_id = world_frame;
     stampedA.header.stamp    = node_->now();
     stampedA.pose.position   = start;
-    stampedA.pose.orientation = initial_orientation_; // from initTask()
+    stampedA.pose.orientation.x = initial_orientation_.x;
+    stampedA.pose.orientation.y = initial_orientation_.y;
+    stampedA.pose.orientation.z = initial_orientation_.z;
+    stampedA.pose.orientation.w = initial_orientation_.w;
+
+    std::cout << initial_orientation_.x << std::endl;
+    std::cout << initial_orientation_.y << std::endl;
+    std::cout << initial_orientation_.z << std::endl;
+    std::cout << initial_orientation_.w << std::endl;
 
     stampedB.header.frame_id = world_frame;
     stampedB.header.stamp    = node_->now();
     stampedB.pose.position   = end;
-    stampedB.pose.orientation = initial_orientation_;
+    stampedB.pose.orientation.x = initial_orientation_.x;
+    stampedB.pose.orientation.y = initial_orientation_.y;
+    stampedB.pose.orientation.z = initial_orientation_.z;
+    stampedB.pose.orientation.w = initial_orientation_.w;
 
     // Move from current state to the first point (OMPL)
     {
@@ -1446,6 +1552,7 @@ void TaskBuilder::scanLine(std::string world_frame, std::string tip_frame,
     RCLCPP_INFO(node_->get_logger(),
                 "[scanLine] Added 1) OMPL move to start, then 2) LIN move to end. "
                 "Call planTask() + executeTask() to run.");
+    executed_ = true;
 }
 
 
@@ -1494,6 +1601,7 @@ void TaskBuilder::calibrateCamera(std::string tip_frame, double x, double y, dou
     if (!current_solver_) {
         RCLCPP_ERROR(node_->get_logger(),
                      "[calibrateCamera] No active solver set. Use choosePipeline() first.");
+        executed_ = false;
         return;
     }
 
@@ -1509,6 +1617,7 @@ void TaskBuilder::calibrateCamera(std::string tip_frame, double x, double y, dou
 
     RCLCPP_INFO(node_->get_logger(),
                 "[calibrateCamera] Added random move to the Task. (No immediate execution.)");
+    executed_ = true;
 }
 
 bool TaskBuilder::initTask()
@@ -1518,26 +1627,11 @@ bool TaskBuilder::initTask()
         task_.init();
     } catch(const mtc::InitStageException& ex) {
         RCLCPP_ERROR_STREAM(node_->get_logger(), "Task init failed: " << ex);
+        executed_ = false;
         return false;
     }
 
-    // ---------------------------------------------------------
-    // Capture the robot's current tip-frame orientation
-    // so that we can reuse it in scanLine (rather than 0,0,0,1).
-    // ---------------------------------------------------------
-    // geometry_msgs::msg::PoseStamped current_pose = move_group_->getCurrentPose(tip_frame_);
-    // initial_orientation_ = current_pose.pose.orientation;
-    initial_orientation_.x = 0;
-    initial_orientation_.y = 0;
-    initial_orientation_.z = 0;
-    initial_orientation_.w = 1;
-    RCLCPP_INFO(node_->get_logger(),
-                "[initTask] Storing initial orientation: (%.3f, %.3f, %.3f, %.3f)",
-                initial_orientation_.x,
-                initial_orientation_.y,
-                initial_orientation_.z,
-                initial_orientation_.w);
-
+    executed_ = true;
     return true;
 }
 
@@ -1547,11 +1641,14 @@ bool TaskBuilder::planTask(unsigned max_solutions)
     try {
         if (!task_.plan(max_solutions)) {
             RCLCPP_ERROR(node_->get_logger(), "Task planning failed");
+            executed_ = false;
             return false;
         }
+        executed_ = true;
         return true;
     } catch(const mtc::InitStageException& ex) {
         RCLCPP_ERROR_STREAM(node_->get_logger(), "Task planning threw: " << ex);
+        executed_ = false;
         return false;
     }
 }
@@ -1564,10 +1661,12 @@ bool TaskBuilder::executeTask()
         auto result = task_.execute(*solution);
         if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
             RCLCPP_ERROR(node_->get_logger(), "Task execution failed!");
+            executed_ = false;
             return false;
         }
     }
     RCLCPP_INFO(node_->get_logger(), "Task execution SUCCESS!");
+    executed_ = true;
     return true;
 }
 
@@ -1582,6 +1681,7 @@ bool TaskBuilder::planWaypoints(const std::vector<geometry_msgs::msg::PoseStampe
 {
     if (waypoints.empty()) {
         RCLCPP_WARN(node_->get_logger(), "[planWaypoints] No waypoints provided. Nothing to plan.");
+        executed_ = false;
         return false;
     }
 
@@ -1611,7 +1711,7 @@ bool TaskBuilder::planWaypoints(const std::vector<geometry_msgs::msg::PoseStampe
         stage->setGroup(arm_group_name_);
         stage->setGoal(w);
         // If you want to set the tip frame explicitly:
-        // stage->setIKFrame(tip_frame_);
+        stage->setIKFrame(tip_frame_);
         stage->setTimeout(5.0);
 
         // If you'd like to set goal tolerances in MTC (optional):
@@ -1623,5 +1723,6 @@ bool TaskBuilder::planWaypoints(const std::vector<geometry_msgs::msg::PoseStampe
     // We do NOT plan or execute here.  That must be done via:
     //   planTask();
     //   executeTask();
+    executed_ = true;
     return true;
 }

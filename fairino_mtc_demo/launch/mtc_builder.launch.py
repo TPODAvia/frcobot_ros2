@@ -1,88 +1,79 @@
-# mtc_builder.launch.py
-
+#!/usr/bin/env python3
+import os
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
-import os
-# Adjust to match your actual MoveIt package name
+
+# Adjust these to match your actual package and robot settings.
 packagename = "fairino10_v6_moveit2_config"
 robot_name = "fairino10_v6_robot"
 arm_group_name = "fairino10_v6_group"
 tip_frame = "tip_link"
+
+# Fixed configuration flags.
 exec_task = True
 save_json = True
-reserved_1 = False # this could be for velosity limit
-reserved_2 = False # this could be for acceleration limit
-reserved_3 = False # this could be for tolerance
-reserved_4 = False # this could be for gripper
-# Dynamically get the home directory
+reserved_1 = False  # e.g., velocity limit
+reserved_2 = False  # e.g., acceleration limit
+reserved_3 = False  # e.g., tolerance
+reserved_4 = False  # e.g., gripper
+
+# Get the home directory and define file paths.
 home_dir = os.path.expanduser("~")
-
-# Define paths relative to the home directory
-default_json_path = os.path.join(home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/")
+default_json_path = os.path.join(
+    home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/"
+)
 json_sim_content = os.path.join(default_json_path, "test.json")
+trajectoy_file = os.path.join(
+    home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/csv_demo.csv"
+)
 
-def generate_launch_description():
-    # 1) Build the MoveIt configuration dictionary
-    #    This loads URDF, SRDF, kinematics, etc. into a Python dict.
-    moveit_config = MoveItConfigsBuilder(robot_name=robot_name, package_name=packagename).to_dict()
+def launch_setup(context, moveit_config):
+    # Fixed base arguments.
+    base_args = [
+        arm_group_name,
+        tip_frame,
+        str(exec_task).lower(),
+        str(save_json).lower(),
+        str(reserved_1).lower(),
+        str(reserved_2).lower(),
+        str(reserved_3).lower(),
+        str(reserved_4).lower()
+    ]
+    
+    # Retrieve the 'command_list' launch argument, which should be a space‐separated string.
+    command_list_str = LaunchConfiguration('command_list').perform(context)
+    extra_args = command_list_str.split() if command_list_str else []
+    
+    # Concatenate the base arguments with the extra command arguments.
+    full_args = base_args + extra_args
 
-    # 2) Create the Node action
-    # arguments = [arm_group_name, tip_frame, command]
-    pick_place_demo = Node(
+    node = Node(
         package="fairino_mtc_demo",
         executable="task_generator",
         name="task_generator_node",
         output="screen",
         parameters=[moveit_config],
-        arguments=[
-            arm_group_name,
-            tip_frame,
-            str(exec_task).lower(),
-            str(save_json).lower(),
-            str(reserved_1).lower(),
-            str(reserved_2).lower(),
-            str(reserved_3).lower(),
-            str(reserved_4).lower(),
-                # "get_robot_param"
-                # "clear_scene"
-                # "remove_object", "cylinder"
-                # "remove_object", "box"
-                # "remove_object", "sphere"
-                # "remove_object", "cone"
-                # "spawn_object", "cylinder"
-                # "spawn_object", "cylinder", "0.25", "0.25", "1.0", "0", "0", "0", "1",    "0.1", "0.02", "0.0"
-                # "spawn_object", "box",      "1", "1", "1", "0", "0", "0", "1",    "0.05", "0.05", "0.05"
-                # "spawn_object", "sphere",   "1", "1", "1", "1", "0", "0", "0",    "0.05", "0.0", "0.0"
-                # "spawn_object", "cone",     "1", "1", "1", "0", "0", "0", "1",    "0.15", "0.05", "0.0"
-                # "attach_object", "cylinder", tip_frame 
-                # "gripper_open"
-                # "gripper_close"
-                # "joints_move"
-                # "joints_move", "0.47", "-1.25", "0.056", "0.47", "1.3", "0"
-                # "displacement_move", "world", tip_frame, "0.0", "0.0", "0.05", "0.0","0.0", "1.1"
-                # "check_json_files", default_json_path
-                # "delete_json_sim_content", json_sim_content
-                # "delete_json_temp", default_json_path
+        arguments=full_args
+    )
+    return [node]
 
-                # "absolute_move", "world", "0.25", "0.25", "1.0", "0", "0", "0", "1"
-                # "absolute_move", "world", tip_frame, "tip_link"
-                # "absolute_move", "world", tip_frame, "cylinder"
+def generate_launch_description():
+    # Build the MoveIt configuration.
+    moveit_config = MoveItConfigsBuilder(
+        robot_name=robot_name, package_name=packagename
+    ).to_dict()
 
-                # "choose_pipeline", "ompl", "RRTConnect" # Too unpredictable movement, move too fast
-                # "choose_pipeline", "pilz_industrial_motion_planner", "LIN"                
-
-                # "calibrate_camera", "0.2", "6.2", "0.5" # Remove te json saving
-
-                "scan_line", "world", "0.5", "0.1", "0.5", "0.25", "0.25", "0.5" # Not done
-                # "trajectory_move", trajectoy_file # This also
-                
-                # The functionalities below are not implemented
-                # "feedback_move", "mode" 
-                # "collaborative_move", "mode"
-                # "gcode_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/Griff.ngc"
-                # "step_load", "/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/model2.stp"
-            ]         
+    # Declare a launch argument to hold the extra command arguments.
+    command_arg = DeclareLaunchArgument(
+        'command_list',
+        default_value="",
+        description='Space-separated list of command arguments to pass to the node'
     )
 
-    return LaunchDescription([pick_place_demo])
+    return LaunchDescription([
+        command_arg,
+        OpaqueFunction(function=lambda context: launch_setup(context, moveit_config))
+    ])

@@ -333,5 +333,16 @@ private:
         infile.close();
         return waypoints;
     }
-    
+
+    geometry_msgs::msg::Quaternion inverseQuaternion(const geometry_msgs::msg::Quaternion &q)
+    {
+        // For a unit quaternion, the inverse is its conjugate.
+        geometry_msgs::msg::Quaternion q_inv;
+        q_inv.x = -q.x;
+        q_inv.y = -q.y;
+        q_inv.z = -q.z;
+        q_inv.w = q.w;
+        return q_inv;
+    }
+
 };

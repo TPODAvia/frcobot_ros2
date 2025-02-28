@@ -375,7 +375,7 @@ int main(int argc, char** argv)
 		case CommandKind::CLEAR_SCENE:
 		{
 			builder.clearScene();
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713337691.1535506": {
 				//   "clear_scene": {
@@ -395,7 +395,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.removeObject(argv[task_variables + 1]);
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				// {
 				//  "1713337798.1825986": {
@@ -431,7 +431,7 @@ int main(int argc, char** argv)
 			if (exec_task == "true") {
 				builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
 			}
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713337863.463677": {
 				//   "spawn_object": {
@@ -463,7 +463,7 @@ int main(int argc, char** argv)
 			std::string planner  = argv[task_variables + 2];
 			builder.savePipelineConfig(pipeline, planner, 0.0, 0.0);
 			builder.choosePipeline(pipeline, planner, 0.0, 0.0);
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713337876.5688505": {
 				//   "choose_pipeline": {
@@ -517,7 +517,7 @@ int main(int argc, char** argv)
 				joint_map["j6"] = std::stod(argv[task_variables + 6]);
 			}
 
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713337825.8489513": {
 				//   "joints_move": {
@@ -583,7 +583,7 @@ int main(int argc, char** argv)
 				rclcpp::shutdown();
 				return 1;
 			}
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713338342.2387867": {
 				//   "absolute_move": {
@@ -645,7 +645,7 @@ int main(int argc, char** argv)
 			RCLCPP_ERROR(node->get_logger(),"Hello");
 			builder.displacementMove(world_frame, tip, translation_vector, rotation_vector);
 			RCLCPP_ERROR(node->get_logger(),"Hello2");
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713338342.2387867": {
 				//   "displacement_move": {
@@ -693,7 +693,7 @@ int main(int argc, char** argv)
 			double accel_scale = 		std::stod(argv[task_variables + 3]);
 			double pose_tol = 			std::stod(argv[task_variables + 4]);
 			builder.trajectoryMove(csv_file, vel_scale, accel_scale, pose_tol);
-			if (true) {
+			if (builder.ok()) {
 			}
 		}
 		break;
@@ -706,7 +706,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.feedbackMove(argv[task_variables + 1]);
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[feedback_move]: json saving is not suppported");
 			}
 		}
@@ -721,7 +721,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.collaborativeMove(argv[task_variables + 1], argv[task_variables + 2]);
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
 			}
 		}
@@ -735,7 +735,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.gripperClose();
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//   "1714837275.7592714": {
 				//    "gripper_close": {
@@ -757,7 +757,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.gripperOpen();
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//   "1714837303.1926935": {
 				//    "gripper_open": {
@@ -776,7 +776,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.attachObject(argv[task_variables + 1], argv[task_variables + 2]);
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713338391.0690901": {
 				//   "attach_object": {
@@ -797,7 +797,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.detachObject(argv[task_variables + 1], argv[task_variables + 2]);
-			if (true) {
+			if (builder.ok()) {
 				// Format:
 				//  "1713338391.0690901": {
 				//   "detach_object": {
@@ -869,7 +869,7 @@ int main(int argc, char** argv)
 			end.z = 		std::stod(argv[task_variables + 7]);
 			// If TaskBuilder::scanLine is implemented, call it.
 			builder.scanLine(world_frame, tip_frame, start, end);
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
 			save_json = false;
@@ -889,7 +889,7 @@ int main(int argc, char** argv)
 			double z = std::stod(argv[task_variables + 3]);
 			// The orientation is not used in our simple example.
 			builder.calibrateCamera(tip_frame, x, y, z);
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
 			save_json = false;
@@ -915,7 +915,7 @@ int main(int argc, char** argv)
 			savePosesToFile(debug_file, gcode_poses);
 			RCLCPP_INFO(node->get_logger(), "G-code poses saved to %s", debug_file.c_str());
 			// Optionally, call builder.trajectoryMove() if you have an overload.
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
 			save_json = false;
@@ -940,7 +940,7 @@ int main(int argc, char** argv)
 			// Optionally, save debug file:
 			// savePosesToFile("step_curve_poses_debug.txt", curve_poses);
 			// Optionally, call builder.trajectoryMove() if you have an overload.
-			if (true) {
+			if (builder.ok()) {
 				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			}
 			save_json = false;

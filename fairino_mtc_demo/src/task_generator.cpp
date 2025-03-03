@@ -353,7 +353,7 @@ int main(int argc, char** argv)
 	std::string velosity_limit  =     argv[5];
 	std::string acceleration_limit =  argv[6];
 	std::string tolerance       =     argv[7];
-	std::string gripper         =     argv[8];
+	std::string virtual_base    =     argv[8];
 	std::string command_str     =     argv[9];
 
 	int internal_variables = 6;
@@ -363,6 +363,8 @@ int main(int argc, char** argv)
 	TaskBuilder builder(node, arm_group_name, tip_frame);
 	builder.newTask("demo_task");
 	nlohmann::json entry;
+
+	builder.spawn_virtual_base(virtual_base == "true");
 
 	// Process commands.
 	switch (parseCommand(command_str))
@@ -375,15 +377,17 @@ int main(int argc, char** argv)
 		case CommandKind::CLEAR_SCENE:
 		{
 			builder.clearScene();
-			if (builder.ok()) {
-				// Format:
-				//  "1713337691.1535506": {
-				//   "clear_scene": {
-				//    "clear_scene": 1
-				//   }
-				//  }
-				entry["clear_scene"] = { { "clear_scene", 1 } };
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713337691.1535506": {
+			//   "clear_scene": {
+			//    "clear_scene": 1
+			//   }
+			//  }
+			entry["clear_scene"] = { { "clear_scene", 1 } };
 		}
 		break;
 
@@ -395,17 +399,19 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.removeObject(argv[task_variables + 1]);
-			if (builder.ok()) {
-				// Format:
-				// {
-				//  "1713337798.1825986": {
-				//   "remove_object": {
-				//    "hello_box": 1
-				//   }
-				//  }
-				std::string object_name = argv[task_variables + 1];
-				entry["remove_object"] = { { object_name, 1 } };
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			// {
+			//  "1713337798.1825986": {
+			//   "remove_object": {
+			//    "hello_box": 1
+			//   }
+			//  }
+			std::string object_name = argv[task_variables + 1];
+			entry["remove_object"] = { { object_name, 1 } };
 		}
 		break;
 
@@ -431,24 +437,26 @@ int main(int argc, char** argv)
 			if (exec_task == "true") {
 				builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
 			}
-			if (builder.ok()) {
-				// Format:
-				//  "1713337863.463677": {
-				//   "spawn_object": {
-				//    "hello_box": {
-				//     "x": 0.0,
-				//     "y": 0.5,
-				//     "z": 0.2
-				//    }
-				//   }
-				//  }
-				std::string object_name = argv[10];
-				entry["spawn_object"][object_name] = {
-					{ "x", x },
-					{ "y", y },
-					{ "z", z }
-				};
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713337863.463677": {
+			//   "spawn_object": {
+			//    "hello_box": {
+			//     "x": 0.0,
+			//     "y": 0.5,
+			//     "z": 0.2
+			//    }
+			//   }
+			//  }
+			std::string object_name = argv[10];
+			entry["spawn_object"][object_name] = { // ???
+				{ "x", x },
+				{ "y", y },
+				{ "z", z }
+			};
 		}
 		break;
 
@@ -463,17 +471,17 @@ int main(int argc, char** argv)
 			std::string planner  = argv[task_variables + 2];
 			builder.savePipelineConfig(pipeline, planner, 0.0, 0.0);
 			builder.choosePipeline(pipeline, planner, 0.0, 0.0);
-			if (builder.ok()) {
-				// Format:
-				//  "1713337876.5688505": {
-				//   "choose_pipeline": {
-				//    "OMPL": "RRTConnect"
-				//   }
-				//  }
-				std::string pipeline = argv[10];
-				std::string planner  = argv[11];
-				entry["choose_pipeline"][pipeline] = planner;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713337876.5688505": {
+			//   "choose_pipeline": {
+			//    "OMPL": "RRTConnect"
+			//   }
+			//  }
+			entry["choose_pipeline"][pipeline] = planner;
 		}
 		break;
 
@@ -517,22 +525,24 @@ int main(int argc, char** argv)
 				joint_map["j6"] = std::stod(argv[task_variables + 6]);
 			}
 
-			if (builder.ok()) {
-				// Format:
-				//  "1713337825.8489513": {
-				//   "joints_move": {
-				//    "positions": {
-				//     "j1": -0.05924035042911946,
-				//     "j2": -1.3807693204190459,
-				//     "j3": 1.4017875208377042,
-				//     "j4": -0.01751446328105022,
-				//     "j5": -0.07052746890781059,
-				//     "j6": 0.02017181009719593
-				//    }
-				//   }
-				//  }
-				entry["joints_move"]["positions"] = joint_map;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713337825.8489513": {
+			//   "joints_move": {
+			//    "positions": {
+			//     "j1": -0.05924035042911946,
+			//     "j2": -1.3807693204190459,
+			//     "j3": 1.4017875208377042,
+			//     "j4": -0.01751446328105022,
+			//     "j5": -0.07052746890781059,
+			//     "j6": 0.02017181009719593
+			//    }
+			//   }
+			//  }
+			entry["joints_move"]["positions"] = joint_map;
 		}
 		break;
 
@@ -583,39 +593,41 @@ int main(int argc, char** argv)
 				rclcpp::shutdown();
 				return 1;
 			}
-			if (builder.ok()) {
-				// Format:
-				//  "1713338342.2387867": {
-				//   "absolute_move": {
-				//    "tf_end": {
-				//     "position": [
-				//      0.0,
-				//      0.5,
-				//      0.2
-				//     ],
-				//     "quaternion": [
-				//      0,
-				//      0,
-				//      0,
-				//      1
-				//     ]
-				//    }
-				//   }
-				//  }
-				// We'll replicate old "end_coordinate" wrapping with "absolute_move":
-				std::string frame_id = argv[task_variables + 1];
-				double x  = std::stod(argv[task_variables + 2]);
-				double y  = std::stod(argv[task_variables + 3]);
-				double z  = std::stod(argv[task_variables + 4]);
-				double rx = std::stod(argv[task_variables + 5]);
-				double ry = std::stod(argv[task_variables + 6]);
-				double rz = std::stod(argv[task_variables + 7]);
-				double rw = std::stod(argv[task_variables + 8]);
-				entry["absolute_move"][frame_id] = {
-				{ "position",   { x, y, z } },
-				{ "quaternion", { rx, ry, rz, rw } }
-				};
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713338342.2387867": {
+			//   "absolute_move": {
+			//    "tf_end": {
+			//     "position": [
+			//      0.0,
+			//      0.5,
+			//      0.2
+			//     ],
+			//     "quaternion": [
+			//      0,
+			//      0,
+			//      0,
+			//      1
+			//     ]
+			//    }
+			//   }
+			//  }
+			// We'll replicate old "end_coordinate" wrapping with "absolute_move":
+			std::string frame_id = argv[task_variables + 1];
+			double x  = std::stod(argv[task_variables + 2]);
+			double y  = std::stod(argv[task_variables + 3]);
+			double z  = std::stod(argv[task_variables + 4]);
+			double rx = std::stod(argv[task_variables + 5]);
+			double ry = std::stod(argv[task_variables + 6]);
+			double rz = std::stod(argv[task_variables + 7]);
+			double rw = std::stod(argv[task_variables + 8]);
+			entry["absolute_move"][frame_id] = {
+			{ "position",   { x, y, z } },
+			{ "quaternion", { rx, ry, rz, rw } }
+			};
 		}
 		break;
 
@@ -642,41 +654,14 @@ int main(int argc, char** argv)
 			std::vector<double> rotation_vector;
 			for (int i = (task_variables + 6); i < (task_variables + 9); ++i)
 			rotation_vector.push_back(std::stod(argv[i]));
-			RCLCPP_ERROR(node->get_logger(),"Hello");
 			builder.displacementMove(world_frame, tip, translation_vector, rotation_vector);
-			RCLCPP_ERROR(node->get_logger(),"Hello2");
-			if (builder.ok()) {
-				// Format:
-				//  "1713338342.2387867": {
-				//   "displacement_move": {
-				//    "tf_end": {
-				//     "translation": [
-				//      0.0,
-				//      0.5,
-				//      0.2
-				//     ],
-				//     "rotation": [
-				//      0,
-				//      0,
-				//      0,
-				//     ]
-				//    }
-				//   }
-				//  }
 
-				std::string frame_id = argv[task_variables + 1];
-				std::string tip_link = argv[task_variables + 2];
-				double tx  = std::stod(argv[task_variables + 3]);
-				double ty  = std::stod(argv[task_variables + 4]);
-				double tz  = std::stod(argv[task_variables + 5]);
-				double rx  = std::stod(argv[task_variables + 6]);
-				double ry  = std::stod(argv[task_variables + 7]);
-				double rz  = std::stod(argv[task_variables + 8]);
-				entry["displacement_move"][frame_id] = {
-				{ "translation",   	{ tx, ty, tz } },
-				{ "rotation", 		{ rx, ry, rz } }
-				};
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
+			save_json = false;
 		}
 		break;
 
@@ -693,8 +678,12 @@ int main(int argc, char** argv)
 			double accel_scale = 		std::stod(argv[task_variables + 3]);
 			double pose_tol = 			std::stod(argv[task_variables + 4]);
 			builder.trajectoryMove(csv_file, vel_scale, accel_scale, pose_tol);
-			if (builder.ok()) {
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
+			save_json = false;
 		}
 		break;
 
@@ -706,9 +695,12 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.feedbackMove(argv[task_variables + 1]);
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[feedback_move]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[feedback_move]: json saving is not suppported");
+			save_json=false;
 		}
 		break;
 
@@ -721,9 +713,12 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.collaborativeMove(argv[task_variables + 1], argv[task_variables + 2]);
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[collaborative_move]: json saving is not suppported");
+			save_json = false;
 		}
 		break;
 
@@ -735,17 +730,19 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.gripperClose();
-			if (builder.ok()) {
-				// Format:
-				//   "1714837275.7592714": {
-				//    "gripper_close": {
-				//     "gripper_close": 0.18
-				//    }
-				//   }
-				std::string object_name = argv[10];
-				std::string link_name   = argv[11];
-				entry["gripper_close"]["gripper_close"] = 1.0;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//   "1714837275.7592714": {
+			//    "gripper_close": {
+			//     "gripper_close": 0.18
+			//    }
+			//   }
+			std::string object_name = argv[10];
+			std::string link_name   = argv[11];
+			entry["gripper_close"]["gripper_close"] = 1.0;
 		}
 		break;
 
@@ -757,36 +754,42 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.gripperOpen();
-			if (builder.ok()) {
-				// Format:
-				//   "1714837303.1926935": {
-				//    "gripper_open": {
-				//     "gripper_open": 0.0
-				//    }
-				//   }
-				entry["gripper_open"]["gripper_open"] = 0.0;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//   "1714837303.1926935": {
+			//    "gripper_open": {
+			//     "gripper_open": 0.0
+			//    }
+			//   }
+			entry["gripper_open"]["gripper_open"] = 0.0;
 		}
 		break;
 
 		case CommandKind::ATTACH_OBJECT:
+		{
 			if (argc != default_variables + 2) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: attach_object <object_name> <link_name>");
 				rclcpp::shutdown();
 				return 1;
 			}
 			builder.attachObject(argv[task_variables + 1], argv[task_variables + 2]);
-			if (builder.ok()) {
-				// Format:
-				//  "1713338391.0690901": {
-				//   "attach_object": {
-				//    "hello_box": "tf_end"
-				//   }
-				//  }
-				std::string object_name = argv[task_variables + 1];
-				std::string link_name   = argv[task_variables + 2];
-				entry["attach_object"][object_name] = link_name;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713338391.0690901": {
+			//   "attach_object": {
+			//    "hello_box": "tf_end"
+			//   }
+			//  }
+			std::string object_name = argv[task_variables + 1];
+			std::string link_name   = argv[task_variables + 2];
+			entry["attach_object"][object_name] = link_name;
+		}
 		break;
 
 		case CommandKind::DETACH_OBJECT:
@@ -797,17 +800,19 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			builder.detachObject(argv[task_variables + 1], argv[task_variables + 2]);
-			if (builder.ok()) {
-				// Format:
-				//  "1713338391.0690901": {
-				//   "detach_object": {
-				//    "hello_box": "tf_end"
-				//   }
-				//  }
-				std::string object_name = argv[task_variables + 1];
-				std::string link_name   = argv[task_variables + 2];
-				entry["detach_object"][object_name] = link_name;
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			// Format:
+			//  "1713338391.0690901": {
+			//   "detach_object": {
+			//    "hello_box": "tf_end"
+			//   }
+			//  }
+			std::string object_name = argv[task_variables + 1];
+			std::string link_name   = argv[task_variables + 2];
+			entry["detach_object"][object_name] = link_name;
 		}
 		break;
 
@@ -869,9 +874,11 @@ int main(int argc, char** argv)
 			end.z = 		std::stod(argv[task_variables + 7]);
 			// If TaskBuilder::scanLine is implemented, call it.
 			builder.scanLine(world_frame, tip_frame, start, end);
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			save_json = false;
 		}
 		break;
@@ -889,9 +896,11 @@ int main(int argc, char** argv)
 			double z = std::stod(argv[task_variables + 3]);
 			// The orientation is not used in our simple example.
 			builder.calibrateCamera(tip_frame, x, y, z);
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			save_json = false;
 		}
 		break;
@@ -907,17 +916,19 @@ int main(int argc, char** argv)
 			std::string gcode_file = argv[task_variables + 1];
 			auto gcode_poses = builder.gcodeLoad(gcode_file, ""); // mode can be used if needed
 			if (gcode_poses.empty()) {
-			RCLCPP_ERROR(node->get_logger(), "No valid trajectory from G-code file: %s", gcode_file.c_str());
-			rclcpp::shutdown();
-			return 1;
+				RCLCPP_ERROR(node->get_logger(), "No valid trajectory from G-code file: %s", gcode_file.c_str());
+				rclcpp::shutdown();
+				return 1;
 			}
 			std::string debug_file = "gcode_poses_debug.txt";
 			savePosesToFile(debug_file, gcode_poses);
 			RCLCPP_INFO(node->get_logger(), "G-code poses saved to %s", debug_file.c_str());
 			// Optionally, call builder.trajectoryMove() if you have an overload.
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			save_json = false;
 		}
 		break;
@@ -933,16 +944,18 @@ int main(int argc, char** argv)
 			std::string step_filename = argv[task_variables + 1];
 			auto curve_poses = builder.stepLoad(step_filename);
 			if (curve_poses.empty()) {
-			RCLCPP_ERROR(node->get_logger(), "No valid poses generated from STEP file: %s", step_filename.c_str());
-			rclcpp::shutdown();
-			return 1;
+				RCLCPP_ERROR(node->get_logger(), "No valid poses generated from STEP file: %s", step_filename.c_str());
+				rclcpp::shutdown();
+				return 1;
 			}
 			// Optionally, save debug file:
 			// savePosesToFile("step_curve_poses_debug.txt", curve_poses);
 			// Optionally, call builder.trajectoryMove() if you have an overload.
-			if (builder.ok()) {
-				RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
+			if (!builder.ok()) {
+				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
+				return 1;
 			}
+			RCLCPP_WARN(node->get_logger(),	"[scan_line]: json saving is not suppported");
 			save_json = false;
 		}
 		break;

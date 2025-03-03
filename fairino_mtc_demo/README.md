@@ -165,7 +165,7 @@ Below are the available commands and examples of how to invoke them. In the exam
 11. **Absolute Move**
     - Move using world coordinates:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world 0.25 0.25 1.0 0 0 0 1"
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world 0.25 0.25 1.0 1 0 0 0"
       ```
     - Move with tip frame and tip link:
       ```bash
@@ -188,14 +188,13 @@ Below are the available commands and examples of how to invoke them. In the exam
 
 12. **Camera Calibration**
     ```bash
-    ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="calibrate_camera 0.2 6.2 0.5"
+    ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="calibrate_camera 0.2 3.2 0.5"
     ```
 
 13. **Scan Line**
     ```bash
     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="scan_line world 0.5 0.1 0.5 0.25 0.25 0.5"
     ```
-    *Note:* This command may be too fast for some applications.
 
 14. **Trajectory Move**
     ```bash

@@ -15,10 +15,10 @@ tip_frame = "tip_link"
 # Fixed configuration flags.
 exec_task = True
 save_json = True
-reserved_1 = False  # e.g., velocity limit
-reserved_2 = False  # e.g., acceleration limit
-reserved_3 = False  # e.g., tolerance
-reserved_4 = False  # e.g., gripper
+velocity_limit = "default"
+acceleration_limit = "default"
+tolerance = "default"
+virtual_base = True  # e.g., gripper
 
 # Get the home directory and define file paths.
 home_dir = os.path.expanduser("~")
@@ -37,10 +37,10 @@ def launch_setup(context, moveit_config):
         tip_frame,
         str(exec_task).lower(),
         str(save_json).lower(),
-        str(reserved_1).lower(),
-        str(reserved_2).lower(),
-        str(reserved_3).lower(),
-        str(reserved_4).lower()
+        str(velocity_limit).lower(),
+        str(acceleration_limit).lower(),
+        str(tolerance).lower(),
+        str(virtual_base).lower()
     ]
     
     # Retrieve the 'command_list' launch argument, which should be a space‐separated string.

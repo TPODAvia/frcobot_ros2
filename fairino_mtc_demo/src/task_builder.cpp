@@ -723,6 +723,57 @@ void TaskBuilder::removeObject(const std::string& object_name)
     executed_ = true;
 }
 
+void TaskBuilder::spawn_virtual_base(bool enable_virtual_base)
+{
+    std::string base_name =  "virtual_base";
+    moveit::planning_interface::PlanningSceneInterface psi;
+    // Check if there're any objects with the name and if yes then delete it
+    if (!enable_virtual_base) {
+        auto object_map = psi.getObjects({base_name});
+        if (object_map.find(base_name) != object_map.end()) {
+            psi.removeCollisionObjects({base_name});
+            RCLCPP_INFO(node_->get_logger(), "[spawn_virtual_base] Virtual base removed");
+            return;
+        }
+    }
+    else {
+        RCLCPP_INFO(node_->get_logger(), "[spawn_virtual_base] Spawning virtual base obstacle");
+        // Define the collision object
+        moveit_msgs::msg::CollisionObject collision_object;
+        collision_object.id = base_name;
+        collision_object.header.frame_id = "world";
+    
+        // Define a box primitive with dimensions 10 x 10 x 0.01
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions.resize(3);
+        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X] = 10.0;
+        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Y] = 10.0;
+        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] = 0.01;
+    
+        // Place the box so that its top is at z = 0.
+        // (For a 0.01-m thick box, its center should be at z = -0.005.)
+        geometry_msgs::msg::Pose box_pose;
+        box_pose.position.x = 0.0;
+        box_pose.position.y = 0.0;
+        box_pose.position.z = -0.01;
+        box_pose.orientation.x = 0.0;
+        box_pose.orientation.y = 0.0;
+        box_pose.orientation.z = 0.0;
+        box_pose.orientation.w = 1.0;
+    
+        collision_object.primitives.push_back(primitive);
+        collision_object.primitive_poses.push_back(box_pose);
+        collision_object.operation = collision_object.ADD;
+    
+        // Apply the collision object to the planning scene
+        psi.applyCollisionObject(collision_object);
+    
+        RCLCPP_INFO(node_->get_logger(), "[spawn_virtual_base] Virtual base spawned.");
+    }
+
+}
+
 void TaskBuilder::spawnObject(const std::string& object_name,
                               const std::string& object_shape,
                               double x, double y, double z,
@@ -731,6 +782,14 @@ void TaskBuilder::spawnObject(const std::string& object_name,
 {
     RCLCPP_INFO(node_->get_logger(), "[spawn_object] Attempt to spawn '%s'", object_name.c_str());
     moveit::planning_interface::PlanningSceneInterface psi;
+
+    // Get the collision object from the scene
+    auto object_map = psi.getObjects({object_name});
+    if (object_map.find(object_name) != object_map.end()) {
+        RCLCPP_ERROR(node_->get_logger(), "Object '%s' already in the map. Aborted!", object_name.c_str());
+        executed_ = false;
+        return;
+    }
 
     bool shape_provided = !object_shape.empty() && object_shape != "use_memory";
     bool coordinates_provided = !(std::isnan(x) || std::isnan(y) || std::isnan(z) ||
@@ -1160,6 +1219,24 @@ void TaskBuilder::feedbackMove(const std::string& pose_topic)
 
 void TaskBuilder::attachObject(const std::string& object_name, const std::string& link_name)
 {
+    // Use the PlanningSceneInterface to check for attached objects
+    moveit::planning_interface::PlanningSceneInterface psi;
+    auto attached_objects = psi.getAttachedObjects({object_name});
+    if (!attached_objects.empty()) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Already attached body '%s'.", object_name.c_str());
+        executed_ = false;
+        return;
+    }
+
+    // Get the collision object from the scene
+    auto object_map = psi.getObjects({object_name});
+    if (object_map.find(object_name) == object_map.end()) {
+        RCLCPP_ERROR(node_->get_logger(), "Object '%s' not found in the scene map.", object_name.c_str());
+        executed_ = false;
+        return;
+    }
+
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
     stage->attachObject(object_name, link_name);
     task_.add(std::move(stage));
@@ -1168,6 +1245,16 @@ void TaskBuilder::attachObject(const std::string& object_name, const std::string
 
 void TaskBuilder::detachObject(const std::string& object_name, const std::string& link_name)
 {
+    // Use the PlanningSceneInterface to check for attached objects
+    moveit::planning_interface::PlanningSceneInterface psi;
+    auto attached_objects = psi.getAttachedObjects({object_name});
+    if (attached_objects.empty()) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Attached body '%s' not found. Aborting operation.", object_name.c_str());
+        executed_ = false;
+        return;
+    }
+
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("detach object");
     stage->detachObject(object_name, link_name);
     task_.add(std::move(stage));

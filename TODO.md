@@ -1,3 +1,3 @@
 - add tolerance and speed control
-- Implement the orientation
-- Check tthe tesk executor node
+- Check the tesk executor node
+entry["spawn_object"] cause null

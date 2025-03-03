@@ -96,6 +96,8 @@ public:
     // Remove an object by name
     void removeObject(const std::string& object_name);
 
+    void spawn_virtual_base(bool enable_virtual_base);
+
     // Spawn an object in the scene with the given pose
     void spawnObject(const std::string& object_name, const std::string& object_shape, 
                     double x, double y, double z,

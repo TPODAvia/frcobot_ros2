@@ -173,7 +173,8 @@ void TaskBuilder::newTask(const std::string& task_name)
 void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
                                      const std::string& planner_id,
                                      double max_vel_factor,
-                                     double max_acc_factor)
+                                     double max_acc_factor,
+                                     double tolerance)
 {
     std::string package_share_directory;
     try {
@@ -203,21 +204,27 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     YAML::Node config;
     config["pipeline_name"] = pipeline_name;
     config["planner_id"] = planner_id;
-    // Use the factors provided by the function parameters as a baseline
-    config["max_velocity_scaling_factor"] = max_vel_factor;
-    config["max_acceleration_scaling_factor"] = max_acc_factor;
 
+    // We’ll use local variables to hold the defaults,
+    // then override them only if the user did NOT pass in NaN.
+    double temp_vel = 0.0;
+    double temp_acc = 0.0;
+    double temp_tol = 0.0;  // default fallback
+
+    // Pipeline-based defaults (the old forced assignments):
     if (pipeline_name == "pilz_industrial_motion_planner")
     {
         if (planner_id == "PTP")
         {
-            config["max_velocity_scaling_factor"] = 0.3;
-            config["max_acceleration_scaling_factor"] = 0.3;
+            temp_vel = 0.3;
+            temp_acc = 0.3;
+            temp_tol = 0.01;
         }
         else if (planner_id == "LIN")
         {
-            config["max_velocity_scaling_factor"] = 0.2;
-            config["max_acceleration_scaling_factor"] = 0.2;
+            temp_vel = 0.2;
+            temp_acc = 0.2;
+            temp_tol = 0.01;
         }
         else
         {
@@ -228,13 +235,15 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
     {
         if (planner_id == "RRTConnect")
         {
-            config["max_velocity_scaling_factor"] = 0.2;
-            config["max_acceleration_scaling_factor"] = 0.2;
+            temp_vel = 0.2;
+            temp_acc = 0.2;
+            temp_tol = 0.01;
         }
         else if (planner_id == "PRM")
         {
-            config["max_velocity_scaling_factor"] = 0.3;
-            config["max_acceleration_scaling_factor"] = 0.3;
+            temp_vel = 0.3;
+            temp_acc = 0.3;
+            temp_tol = 0.01;
         }
         else
         {
@@ -246,6 +255,22 @@ void TaskBuilder::savePipelineConfig(const std::string& pipeline_name,
         config["pipeline_name"] = "unknown";
     }
 
+    if (max_vel_factor > 0.0) {
+        temp_vel = max_vel_factor;
+    }
+    if (max_acc_factor > 0.0) {
+        temp_acc = max_acc_factor;
+    }
+    if (tolerance > 0.0) {
+        temp_tol = tolerance;
+    }
+
+    // Finally store them in config
+    config["max_velocity_scaling_factor"] = temp_vel;
+    config["max_acceleration_scaling_factor"] = temp_acc;
+    config["tolerance"] = temp_tol;
+
+    // If pipeline or planner is unknown, fail
     if (config["pipeline_name"].as<std::string>() == "unknown" ||
         config["planner_id"].as<std::string>() == "unknown")
     {
@@ -301,19 +326,32 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
         std::string planner_id = config["planner_id"].as<std::string>();
         RCLCPP_INFO(node_->get_logger(), "Loaded solver configuration: planner_id=%s", planner_id.c_str());
 
-        double vel_scale = 0.0, acc_scale = 0.0;
+        // We'll retrieve from YAML, or possibly reassign defaults if they are missing or NaN
+        double vel_scale = 0.0;
+        double acc_scale = 0.0;
+        double tol_value = 0.0;
 
-        if (pipeline_name == "pilz_industrial_motion_planner" || pipeline_name == "ompl") {
-            vel_scale = config["max_velocity_scaling_factor"].as<double>();
-            acc_scale = config["max_acceleration_scaling_factor"].as<double>();
+        // Now check if the YAML has explicitly set velocity, acceleration, or tolerance
+        if (config["max_velocity_scaling_factor"]) {
+            double from_yaml = config["max_velocity_scaling_factor"].as<double>();
+            if (from_yaml > 0.0)
+                vel_scale = from_yaml;
+        }
 
-            choosePipeline(pipeline_name, planner_id, vel_scale, acc_scale);
+        if (config["max_acceleration_scaling_factor"]) {
+            double from_yaml = config["max_acceleration_scaling_factor"].as<double>();
+            if (from_yaml > 0.0)
+                acc_scale = from_yaml;
         }
-        else {
-            RCLCPP_ERROR(node_->get_logger(), "Unknown pipeline name in config: %s", pipeline_name.c_str());
-            executed_ = false;
-            return false;
+
+        if (config["tolerance"]) {
+            double from_yaml = config["tolerance"].as<double>();
+            if (from_yaml > 0.0)
+                tol_value = from_yaml;
         }
+
+        // Choose the pipeline with final scale factors
+        choosePipeline(pipeline_name, planner_id, vel_scale, acc_scale, tol_value);
 
         executed_ = true;
         return true;
@@ -328,7 +366,8 @@ bool TaskBuilder::loadSolverConfig(const std::string& file_path)
 void TaskBuilder::choosePipeline(const std::string& pipeline_name,
                                  const std::string& planner_id,
                                  double max_vel_factor,
-                                 double max_acc_factor)
+                                 double max_acc_factor,
+                                 double tolerance)
 {
     // Clear existing solvers
     solvers_.clear();
@@ -386,6 +425,8 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
         executed_ = false;
         return;
     }
+
+    solver_tolerance_ = tolerance;
     executed_ = true;
 }
 
@@ -965,7 +1006,9 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
     stage->setGroup(arm_group_name_);
     stage->setGoal(joints_map);
     stage->setTimeout(10.0);
-
+    if (solver_tolerance_) {
+        stage->properties().set("goal_tolerance", solver_tolerance_);
+    }
     task_.add(std::move(stage));
     executed_ = true;
 }
@@ -1085,7 +1128,9 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
     stage->setTimeout(5.0);
     if (!tip_frame.empty())
         stage->setIKFrame(tip_frame);
-
+    if (solver_tolerance_) {
+        stage->properties().set("goal_tolerance", solver_tolerance_);
+    }
     stage->setGoal(goal_pose_stamped);
 
     task_.add(std::move(stage));
@@ -1125,7 +1170,9 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
         stage_translate->setMinMaxDistance(0.1, 0.2);
         stage_translate->setIKFrame(tip_frame);
         stage_translate->properties().set("marker_ns", "translate");
-
+        if (solver_tolerance_) {
+            stage_translate->properties().set("goal_tolerance", solver_tolerance_);
+        }
         geometry_msgs::msg::Vector3Stamped translation;
         translation.header.frame_id = world_frame;
         translation.vector.x = translation_vector[0];
@@ -1143,7 +1190,9 @@ void TaskBuilder::displacementMove(const std::string& world_frame,
         stage_rotate->setMinMaxDistance(0.01, 0.2);
         stage_rotate->setIKFrame(tip_frame);
         stage_rotate->properties().set("marker_ns", "rotate");
-
+        if (solver_tolerance_) {
+            stage_rotate->properties().set("goal_tolerance", solver_tolerance_);
+        }
         geometry_msgs::msg::TwistStamped rotation;
         rotation.header.frame_id = world_frame;
         rotation.twist.angular.x = rotation_vector[0];
@@ -1261,17 +1310,12 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
     executed_ = true;
 }
 
-void TaskBuilder::gripperClose()
+void TaskBuilder::toolControl(const ToolControlConfig& config)
 {
-    RCLCPP_INFO(node_->get_logger(), "[gripper_close] Called");
-    RCLCPP_ERROR(node_->get_logger(), "[gripper_close] have no action implemented yet.");
-    executed_ = false;
-}
-
-void TaskBuilder::gripperOpen()
-{
-    RCLCPP_INFO(node_->get_logger(), "[gripper_open] Called");
-    RCLCPP_ERROR(node_->get_logger(), "[gripper_open] have no action implemented yet.");
+    RCLCPP_INFO(node_->get_logger(), "[tool_control] Called");
+    RCLCPP_INFO(node_->get_logger(), "[tool_control] Mode: %s", config.mode.c_str());
+    RCLCPP_INFO(node_->get_logger(), "[tool_control] feedback_enabled: %f", config.feedback_enabled);
+    RCLCPP_ERROR(node_->get_logger(), "[tool_control] have no action implemented yet.");
     executed_ = false;
 }
 
@@ -1800,10 +1844,9 @@ bool TaskBuilder::planWaypoints(const std::vector<geometry_msgs::msg::PoseStampe
         // If you want to set the tip frame explicitly:
         stage->setIKFrame(tip_frame_);
         stage->setTimeout(5.0);
-
-        // If you'd like to set goal tolerances in MTC (optional):
-        // e.g. stage->setGoalTolerance(pose_tolerance);
-
+        if (solver_tolerance_) {
+            stage->properties().set("goal_tolerance", solver_tolerance_);
+        }
         task_.add(std::move(stage));
     }
 

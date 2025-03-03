@@ -275,8 +275,7 @@ enum class CommandKind {
 	TRAJECTORY_MOVE,
 	FEEDBACK_MOVE,
 	COLLABORATIVE_MOVE,
-	GRIPPER_CLOSE,
-	GRIPPER_OPEN,
+	TOOL_CONTROL,
 	ATTACH_OBJECT,
 	DETACH_OBJECT,
 	DELETE_JSON_SIM_CONTENT,
@@ -306,8 +305,7 @@ static CommandKind parseCommand(const std::string& cmd)
 	if (lower == "trajectory_move")              return CommandKind::TRAJECTORY_MOVE;
 	if (lower == "feedback_move")                return CommandKind::FEEDBACK_MOVE;
 	if (lower == "collaborative_move")           return CommandKind::COLLABORATIVE_MOVE;
-	if (lower == "gripper_close")                return CommandKind::GRIPPER_CLOSE;
-	if (lower == "gripper_open")                 return CommandKind::GRIPPER_OPEN;
+	if (lower == "tool_control")                 return CommandKind::TOOL_CONTROL;
 	if (lower == "attach_object")                return CommandKind::ATTACH_OBJECT;
 	if (lower == "detach_object")                return CommandKind::DETACH_OBJECT;
 	if (lower == "delete_json_sim_content")      return CommandKind::DELETE_JSON_SIM_CONTENT;
@@ -441,6 +439,7 @@ int main(int argc, char** argv)
 				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
 				return 1;
 			}
+			
 			// Format:
 			//  "1713337863.463677": {
 			//   "spawn_object": {
@@ -462,15 +461,19 @@ int main(int argc, char** argv)
 
 		case CommandKind::CHOOSE_PIPELINE:
 		{
-			if (argc != (default_variables + 2)) {
+			if (argc != (default_variables + 5)) {
 				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: choose_pipeline <pipeline_name> <planner_id>");
 				rclcpp::shutdown();
 				return 1;
 			}
-			std::string pipeline = argv[task_variables + 1];
-			std::string planner  = argv[task_variables + 2];
-			builder.savePipelineConfig(pipeline, planner, 0.0, 0.0);
-			builder.choosePipeline(pipeline, planner, 0.0, 0.0);
+			std::string pipeline 	= argv[task_variables + 1];
+			std::string planner  	= argv[task_variables + 2];
+			// if value are zero then it use the default
+			double max_vel_factor 	= std::stod(argv[task_variables + 3]);
+			double max_acc_factor 	= std::stod(argv[task_variables + 4]);
+			double tolerance 		= std::stod(argv[task_variables + 5]);
+			builder.savePipelineConfig(pipeline, planner, max_vel_factor, max_acc_factor, tolerance);
+			builder.choosePipeline(pipeline, planner, max_vel_factor, max_acc_factor, tolerance);
 			if (!builder.ok()) {
 				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
 				return 1;
@@ -479,9 +482,16 @@ int main(int argc, char** argv)
 			//  "1713337876.5688505": {
 			//   "choose_pipeline": {
 			//    "OMPL": "RRTConnect"
+			//    "max_vel_factor": 0.0  if value is 0.0 then it use the default
+			//    "max_acc_factor": 0.0
+			//    "tolerance": 0.0
 			//   }
 			//  }
+			// should receive the value
 			entry["choose_pipeline"][pipeline] = planner;
+			entry["choose_pipeline"]["max_vel_factor"] = max_vel_factor;
+			entry["choose_pipeline"]["max_acc_factor"] = max_acc_factor;
+			entry["choose_pipeline"]["tolerance"] = tolerance;
 		}
 		break;
 
@@ -722,49 +732,60 @@ int main(int argc, char** argv)
 		}
 		break;
 
-		case CommandKind::GRIPPER_CLOSE:
+		case CommandKind::TOOL_CONTROL:
 		{
-			if (argc != (default_variables)) {
-				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_close");
+			if (argc != (default_variables + 8)) {
+				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: tool_control");
 				rclcpp::shutdown();
 				return 1;
 			}
-			builder.gripperClose();
-			if (!builder.ok()) {
-				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
-				return 1;
-			}
-			// Format:
-			//   "1714837275.7592714": {
-			//    "gripper_close": {
-			//     "gripper_close": 0.18
-			//    }
-			//   }
-			std::string object_name = argv[10];
-			std::string link_name   = argv[11];
-			entry["gripper_close"]["gripper_close"] = 1.0;
-		}
-		break;
 
-		case CommandKind::GRIPPER_OPEN:
-		{
-			if (argc != default_variables) {
-				RCLCPP_ERROR(node->get_logger(), "Syntax Error! Usage: gripper_open");
-				rclcpp::shutdown();
-				return 1;
-			}
-			builder.gripperOpen();
+			std::string mode = 				      argv[task_variables + 1];
+			double feedback_enabled = 	std::stod(argv[task_variables + 2]);
+			double position = 			std::stod(argv[task_variables + 3]);
+			double tolerance = 			std::stod(argv[task_variables + 4]);
+			double power = 				std::stod(argv[task_variables + 5]);
+			double velocity = 			std::stod(argv[task_variables + 6]);
+			double acceleration = 		std::stod(argv[task_variables + 7]);
+			double force_limit = 		std::stod(argv[task_variables + 8]);
+			
+			TaskBuilder::ToolControlConfig tool_config;
+			tool_config.mode = "precision";
+			tool_config.feedback_enabled = feedback_enabled;
+			tool_config.position = position;
+			tool_config.tolerance = tolerance;
+			tool_config.power = power;
+			tool_config.velocity = velocity;
+			tool_config.acceleration = acceleration;
+			tool_config.force_limit = force_limit;
+
+			builder.toolControl(tool_config);
 			if (!builder.ok()) {
 				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
 				return 1;
 			}
 			// Format:
 			//   "1714837303.1926935": {
-			//    "gripper_open": {
-			//     "gripper_open": 0.0
-			//    }
+			//     "tool_control": {
+			//       "mode": "precision",       // (string) Mode of gripping ("precision", "collaborative", "weld", "print", "")
+			//       "feedback_enabled": 0.0    // (unit 0 1) Enables or disables feedback from sensors
+			//       "position": 0.0,           // (unit: relative position) Target opening position (0.0 - fully closed, 1.0 - fully open)
+			//       "tolerance": 0.01,         // (unit: meters) Acceptable deviation in the position
+			//       "power": 0.01,             // (unit: relative scale, 0.0 - 1.0) Power applied to the motor
+			//       "velocity": 0.01,          // (unit: m/s) Speed at which the moves
+			//       "acceleration": 0.01,      // (unit: m/s^2) Acceleration of the movement
+			//       "force_limit": 10.0,       // (unit: N) Maximum force can exert
+			//     }
 			//   }
-			entry["gripper_open"]["gripper_open"] = 0.0;
+
+			entry["tool_control"]["mode"] = "precision";
+			entry["tool_control"]["feedback_enabled"] = feedback_enabled;
+			entry["tool_control"]["position"] = position;
+			entry["tool_control"]["tolerance"] = tolerance;
+			entry["tool_control"]["power"] = power;
+			entry["tool_control"]["velocity"] = velocity;
+			entry["tool_control"]["acceleration"] = acceleration;
+			entry["tool_control"]["force_limit"] = force_limit;
 		}
 		break;
 

@@ -61,11 +61,23 @@ public:
 
     struct StoredObjectData
     {
-    geometry_msgs::msg::Pose pose;       // position + orientation
-    std::string shape;                   // e.g. "cylinder", "box", "sphere", ...
-    std::vector<double> dimensions;      // shape-dependent, e.g. [height, radius] or [x,y,z]
-    std::string color;                   // e.g. "#FF0000" or "red" (future usage)
-    double alpha;                        // transparency: 0.0 (invisible) -> 1.0 (opaque)
+        geometry_msgs::msg::Pose pose;       // position + orientation
+        std::string shape;                   // e.g. "cylinder", "box", "sphere", ...
+        std::vector<double> dimensions;      // shape-dependent, e.g. [height, radius] or [x,y,z]
+        std::string color;                   // e.g. "#FF0000" or "red" (future usage)
+        double alpha;                        // transparency: 0.0 (invisible) -> 1.0 (opaque)
+    };
+
+    struct ToolControlConfig 
+    {
+        std::string mode = "precision";
+        double feedback_enabled = 0.0;
+        double position = 0.0;
+        double tolerance = 0.01;
+        double power = 0.01;
+        double velocity = 0.01;
+        double acceleration = 0.01;
+        double force_limit = 10;
     };
 
     /**
@@ -83,6 +95,8 @@ public:
     bool ok() const {
         return executed_;
     }
+
+    double solver_tolerance_{0.0};
     
     // Clears the internal reference to the current MTC task and starts a new one.
     void newTask(const std::string& task_name);
@@ -108,13 +122,15 @@ public:
     void choosePipeline(const std::string& pipeline_name,
                         const std::string& planner_id,
                         double max_vel_factor,
-                        double max_acc_factor);
+                        double max_acc_factor,
+                        double tolerance);
 
     // Saves the current solver configuration to a YAML file.
     void savePipelineConfig(const std::string& pipeline_name,
                             const std::string& planner_id,
                             double max_vel_factor,
-                            double max_acc_factor);
+                            double max_acc_factor,
+                            double tolerance);
 
     // Move the manipulator to a specified joint position
     void jointsMove(const std::vector<double>& joint_values);
@@ -152,11 +168,8 @@ public:
     // Detach object
     void detachObject(const std::string& object_name, const std::string& link_name);
 
-    // Gripper close
-    void gripperClose();
-
-    // Gripper open
-    void gripperOpen();
+    // Tool control
+    void toolControl(const ToolControlConfig& config);
 
     // Initializes the underlying MTC Task
     bool initTask();

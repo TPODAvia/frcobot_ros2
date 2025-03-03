@@ -204,18 +204,18 @@ int main(int argc, char** argv)
         for (auto& [pipeline_name, planner_id] : pipe_data.items()) {
           std::cout << "[" << timestamp_str << "] choose_pipeline: " 
                     << pipeline_name << " / " << planner_id << "\n";
-          builder.choosePipeline(pipeline_name, planner_id, velocity_scale, accel_scale);
+          builder.choosePipeline(pipeline_name, planner_id, velocity_scale, accel_scale, 0.0);
         }
       }
       else if (command_obj.contains("gripper_open")) {
         // "gripper_open": { "gripper_open": 0.0 }
         std::cout << "[" << timestamp_str << "] Gripper open\n";
-        builder.gripperOpen();
+        // builder.gripperOpen();
       }
       else if (command_obj.contains("gripper_close")) {
         // "gripper_close": { "gripper_close": 1.0 }
         std::cout << "[" << timestamp_str << "] Gripper close\n";
-        builder.gripperClose();
+        // builder.gripperClose();
       }
       else if (command_obj.contains("attach_object")) {
         // "attach_object": { "<object_name>": "<link_name>" }

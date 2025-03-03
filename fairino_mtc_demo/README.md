@@ -123,14 +123,10 @@ Below are the available commands and examples of how to invoke them. In the exam
      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="detach_object cone tip_link"
      ```
 
-7. **Gripper Control**
+7. **Tool Control**
    - Open gripper:
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="gripper_open"
-     ```
-   - Close gripper:
-     ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="gripper_close"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="tool_control precision 0.0 0.0 0.0 0.0 0.0 0.0 0.0"
      ```
 
 8. **Joint Movements**
@@ -151,15 +147,15 @@ Below are the available commands and examples of how to invoke them. In the exam
 10. **JSON and File Commands**
    - Check JSON files (using the default JSON path):
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="check_json_files <default_json_path>"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="check_json_files /home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10"
      ```
    - Delete JSON simulation content:
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="delete_json_sim_content <json_sim_content>"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="delete_json_sim_content /home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/test.json"
      ```
    - Delete temporary JSON files:
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="delete_json_temp <default_json_path>"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="delete_json_temp /home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10"
      ```
 
 11. **Absolute Move**
@@ -169,7 +165,7 @@ Below are the available commands and examples of how to invoke them. In the exam
       ```
     - Move with tip frame and tip link:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link tip_link"
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link tip_link" !!!
       ```
     - Move with tip frame and cylinder:
       ```bash
@@ -177,13 +173,18 @@ Below are the available commands and examples of how to invoke them. In the exam
       ```
 
 11. **Choose Planning Pipeline**
+
+    - max_vel_factor
+    - max_acc_factor
+    - tolerance
+
     - For OMPL:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="choose_pipeline ompl RRTConnect"
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="choose_pipeline ompl RRTConnect 0.0 0.0 0.0"
       ```
     - For Pilz Industrial Motion Planner:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="choose_pipeline pilz_industrial_motion_planner LIN"
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="choose_pipeline pilz_industrial_motion_planner LIN 0.0 0.0 0.0"
       ```
 
 12. **Camera Calibration**
@@ -202,7 +203,7 @@ Below are the available commands and examples of how to invoke them. In the exam
     ```
     The `<trajectoy_file>` is defined in the launch file.
 
-15. **Feedback and Collaborative Moves**
+15. **Feedback and Collaborative Moves** (In the development...)
     - Feedback move:
       ```bash
       ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="feedback_move mode"

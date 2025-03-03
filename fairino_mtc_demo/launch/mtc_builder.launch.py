@@ -15,10 +15,10 @@ tip_frame = "tip_link"
 # Fixed configuration flags.
 exec_task = True
 save_json = True
-velocity_limit = "default"
-acceleration_limit = "default"
-tolerance = "default"
-virtual_base = True  # e.g., gripper
+reserved_1 = "default"
+reserved_2 = "default"
+reserved_3 = "default"
+virtual_base = True
 
 # Get the home directory and define file paths.
 home_dir = os.path.expanduser("~")
@@ -37,9 +37,9 @@ def launch_setup(context, moveit_config):
         tip_frame,
         str(exec_task).lower(),
         str(save_json).lower(),
-        str(velocity_limit).lower(),
-        str(acceleration_limit).lower(),
-        str(tolerance).lower(),
+        str(reserved_1).lower(),
+        str(reserved_2).lower(),
+        str(reserved_3).lower(),
         str(virtual_base).lower()
     ]
     

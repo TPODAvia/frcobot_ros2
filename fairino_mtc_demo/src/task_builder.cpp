@@ -838,26 +838,27 @@ void TaskBuilder::spawnObject(const std::string& object_name,
 
     // Build new struct with user input
     StoredObjectData data;
-    data.pose.position.x = x;
-    data.pose.position.y = y;
-    data.pose.position.z = z;
-    data.pose.orientation.x = rx;
-    data.pose.orientation.y = ry;
-    data.pose.orientation.z = rz;
-    data.pose.orientation.w = rw;
-    data.shape = object_shape;
+    mem_data.pose.position.x = x;
+    mem_data.pose.position.y = y;
+    mem_data.pose.position.z = z;
+    mem_data.pose.orientation.x = rx;
+    mem_data.pose.orientation.y = ry;
+    mem_data.pose.orientation.z = rz;
+    mem_data.pose.orientation.w = rw;
+    mem_data.shape = object_shape;
 
     // dimensions
     if (object_shape == "cylinder" || object_shape == "cone") {
-        data.dimensions = {da, db};
+        mem_data.dimensions = {da, db};
     } else if (object_shape == "box") {
-        data.dimensions = {da, db, dc};
+        mem_data.dimensions = {da, db, dc};
     } else if (object_shape == "sphere") {
-        data.dimensions = {da};
+        mem_data.dimensions = {da};
     }
-    data.color = "#FFFFFF";
-    data.alpha = 1.0;
-
+    mem_data.color = "#FFFFFF";
+    mem_data.alpha = 1.0;
+    data = mem_data;
+    
     // If shape or coords not provided, load from memory
     if (!shape_provided || !coordinates_provided) {
         RCLCPP_INFO(node_->get_logger(), "[spawn_object] shape/coords not fully provided; checking object_data.yaml.");
@@ -882,7 +883,7 @@ void TaskBuilder::spawnObject(const std::string& object_name,
             return;
         }
         // Overwrite with saved data
-        StoredObjectData mem_data = existing_data[object_name];
+        mem_data = existing_data[object_name];
         data.pose = mem_data.pose;
         if (!shape_provided)
             data.shape = mem_data.shape;

@@ -96,6 +96,8 @@ public:
         return executed_;
     }
 
+    StoredObjectData mem_data;
+    
     double solver_tolerance_{0.0};
     
     // Clears the internal reference to the current MTC task and starts a new one.

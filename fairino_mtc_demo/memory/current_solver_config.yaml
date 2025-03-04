@@ -1,8 +1,5 @@
-pipeline_name: pilz_industrial_motion_planner
-planner_id: PTP
-max_velocity_scaling_factor_ptp: 0.5
-max_acceleration_scaling_factor_ptp: 0.5
-max_velocity_scaling_factor_lin: 0.20000000000000001
-max_acceleration_scaling_factor_lin: 0.20000000000000001
-max_velocity_scaling_factor_circ: 0.29999999999999999
-max_acceleration_scaling_factor_circ: 0.29999999999999999
+pipeline_name: ompl
+planner_id: RRTConnect
+max_velocity_scaling_factor: 0.10000000000000001
+max_acceleration_scaling_factor: 0.10000000000000001
+tolerance: 0.01

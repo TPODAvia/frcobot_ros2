@@ -422,40 +422,81 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			std::string obj_name = argv[task_variables + 1];
-			double x = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 2]) : std::numeric_limits<double>::quiet_NaN();
-			double y = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 3]) : std::numeric_limits<double>::quiet_NaN();
-			double z = 	(argc == (default_variables + 11)) ? std::stod(argv[task_variables + 4]) : std::numeric_limits<double>::quiet_NaN();
-			double rx = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 5]) : std::numeric_limits<double>::quiet_NaN();
-			double ry = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 6]) : std::numeric_limits<double>::quiet_NaN();
-			double rz = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 7]) : std::numeric_limits<double>::quiet_NaN();
-			double rw = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 8]) : std::numeric_limits<double>::quiet_NaN();
-			double da = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 9]) : std::numeric_limits<double>::quiet_NaN();
-			double db = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 10]) : std::numeric_limits<double>::quiet_NaN();
-			double dc = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 11]) : std::numeric_limits<double>::quiet_NaN();
+			
+			// Read numeric parameters if provided; otherwise, assign NaN.
+			double x  = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 2])
+															: std::numeric_limits<double>::quiet_NaN();
+			double y  = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 3])
+															: std::numeric_limits<double>::quiet_NaN();
+			double z  = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 4])
+															: std::numeric_limits<double>::quiet_NaN();
+			double rx = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 5])
+															: std::numeric_limits<double>::quiet_NaN();
+			double ry = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 6])
+															: std::numeric_limits<double>::quiet_NaN();
+			double rz = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 7])
+															: std::numeric_limits<double>::quiet_NaN();
+			double rw = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 8])
+															: std::numeric_limits<double>::quiet_NaN();
+			double da = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 9])
+															: std::numeric_limits<double>::quiet_NaN();
+			double db = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 10])
+															: std::numeric_limits<double>::quiet_NaN();
+			double dc = (argc == (default_variables + 11)) ? std::stod(argv[task_variables + 11])
+															: std::numeric_limits<double>::quiet_NaN();
+			
 			if (exec_task == "true") {
+				// Call spawnObject with the values from the command line (which may be NaN)
 				builder.spawnObject(obj_name, obj_name, x, y, z, rx, ry, rz, rw, da, db, dc);
+			
+				// For each parameter, if the command line value is NaN, use the corresponding value from builder.mem_data.
+				if (std::isnan(x))
+					x = builder.mem_data.pose.position.x;
+				if (std::isnan(y))
+				y = builder.mem_data.pose.position.y;
+				if (std::isnan(z))
+					z = builder.mem_data.pose.position.z;
+				if (std::isnan(rx))
+					rx = builder.mem_data.pose.orientation.x;
+				if (std::isnan(ry))
+				ry = builder.mem_data.pose.orientation.y;
+				if (std::isnan(rz))
+					rz = builder.mem_data.pose.orientation.z;
+				if (std::isnan(rw))
+					rw = builder.mem_data.pose.orientation.w;
+				if (std::isnan(da) && !builder.mem_data.dimensions.empty() && builder.mem_data.dimensions.size() > 0)
+					da = builder.mem_data.dimensions[0];
+				if (std::isnan(db) && !builder.mem_data.dimensions.empty() && builder.mem_data.dimensions.size() > 1)
+					db = builder.mem_data.dimensions[1];
+				if (std::isnan(dc) && !builder.mem_data.dimensions.empty() && builder.mem_data.dimensions.size() > 2)
+					dc = builder.mem_data.dimensions[2];
 			}
 			if (!builder.ok()) {
 				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
 				return 1;
 			}
 			
-			// Format:
-			//  "1713337863.463677": {
-			//   "spawn_object": {
-			//    "hello_box": {
-			//     "x": 0.0,
-			//     "y": 0.5,
-			//     "z": 0.2
-			//    }
-			//   }
-			//  }
+			// Log to JSON: here we use argv[10] as the object key.
 			std::string object_name = argv[10];
-			entry["spawn_object"][object_name] = { // ???
-				{ "x", x },
-				{ "y", y },
-				{ "z", z }
+			entry["spawn_object"][object_name] = {
+				{ "x",  x },
+				{ "y",  y },
+				{ "z",  z },
+				{ "rx", rx },
+				{ "ry", ry },
+				{ "rz", rz },
+				{ "rw", rw }
 			};
+
+			// Log dimensions if available.
+			if (!builder.mem_data.dimensions.empty()) {
+				if (builder.mem_data.dimensions.size() > 0)
+				entry["spawn_object"][object_name]["da"] = da;
+				if (builder.mem_data.dimensions.size() > 1)
+				entry["spawn_object"][object_name]["db"] = db;
+				if (builder.mem_data.dimensions.size() > 2)
+				entry["spawn_object"][object_name]["dc"] = dc;
+			}
 		}
 		break;
 

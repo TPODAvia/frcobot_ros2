@@ -1,0 +1,17 @@
+planning_scene_monitor:
+  publish_geometry_updates: true
+  publish_state_updates: true
+  publish_transforms_updates: true
+
+# Configure the OccupancyMapMonitor plugin to subscribe to a point cloud
+octomap:
+  plugins:
+    - plugin: "occupancy_map_monitor/PointCloudOctomapUpdater"
+      name: "point_cloud_updater"
+      point_cloud_topic: "/camera/depth/points"  # Adjust to your real or gazebo topic
+      max_range: 3.0
+      point_subsample: 1
+      # Name of the tf frame of the point cloud (e.g. camera_link, or it might be something else from realsense)
+      point_cloud_frame: "camera_link"
+      # The robot base frame in your TF tree (usually something like 'base_link')
+      monitored_frame: "base_link"

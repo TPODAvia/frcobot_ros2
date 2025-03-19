@@ -23,6 +23,10 @@ colcon build --packages-select fairino_mtc_demo
 
 ## Usage
 
+```
+ros2 launch fairino_mtc_demo moveit_sim.launch.py
+```
+
 ### Launch Command Format
 
 Since ROS 2 launch only accepts arguments of the form `name:=value`, you must pass all extra command arguments using the single `command_list` parameter. The syntax is:
@@ -76,7 +80,7 @@ Below are the available commands and examples of how to invoke them. In the exam
      ```
    - Spawn box:
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="spawn_object box 1 1 1 0 0 0 1 0.05 0.05 0.05"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="spawn_object box 0 0.3 0.6 0.98 -0.006 0.1852 -0.03 0.05 0.05 0.05"
      ```
    - Spawn sphere:
      ```bash
@@ -136,7 +140,7 @@ Below are the available commands and examples of how to invoke them. In the exam
      ```
    - Joint move with specific values:
      ```bash
-     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move 0.47 -1.25 0.056 0.47 1.3 0"
+     ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move 0.0 -1.57 1.57 0 0 0"
      ```
 
 9. **Displacement Move**
@@ -165,16 +169,16 @@ Below are the available commands and examples of how to invoke them. In the exam
       ```
     - Move with tip frame and tip link:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link tip_link" !!!
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link tip_link" !!! ???
       ```
     - Move with tip frame and cylinder:
       ```bash
-      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link cylinder"
+      ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link box"
       ```
 
 11. **Choose Planning Pipeline**
 
-    - max_vel_factor
+    - max_vel_factor zero -default
     - max_acc_factor
     - tolerance
 
@@ -245,3 +249,15 @@ This universal launch file provides a flexible and easy way to execute a variety
 ---
 
 Feel free to modify this README to better fit your project details or to add any additional notes for your users.
+
+
+
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="clear_scene"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="spawn_object box 0 0.3 0.6 0.98 -0.006 0.1852 -0.03 0.05 0.05 0.05"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move 0.0 -1.57 1.57 0 0 0"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link box"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="attach_object box tip_link"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="displacement_move world tip_link 0.0 0.0 0.05 0.0 0.0 1.1"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="detach_object box tip_link"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="remove_object box"

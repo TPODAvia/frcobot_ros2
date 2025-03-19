@@ -8,7 +8,7 @@ def generate_launch_description():
     arm_arg = DeclareLaunchArgument('arm_group_name', default_value='manipulator')
     tip_arg = DeclareLaunchArgument('tip_frame', default_value='tool0')
     exec_arg = DeclareLaunchArgument('exec_task', default_value='false')
-    json_arg = DeclareLaunchArgument('json_file', default_value='/path/to/test.json')
+    json_arg = DeclareLaunchArgument('json_file', default_value='/home/vboxuser/colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/test.json')
     vel_arg  = DeclareLaunchArgument('velocity',  default_value='1.0')
     acc_arg  = DeclareLaunchArgument('accel',     default_value='1.0')
     tol_arg  = DeclareLaunchArgument('tolerance', default_value='0.01')

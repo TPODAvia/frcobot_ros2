@@ -601,22 +601,65 @@ int main(int argc, char** argv)
 		{
 			// Two modes: either 3 extra args (frame_id tip_frame target_frame) or 7 extra args (frame_id x y z rx ry rz rw)
 			if (argc == (default_variables + 3)) {
-				// Check if argv[10] to argv[12] are non-numeric strings
-				if (isNumeric(argv[task_variables + 1]) || isNumeric(argv[task_variables + 2]) || isNumeric(argv[12])) {
+				// Check if argv[task_variables+1] to argv[task_variables+3] are non-numeric strings
+				if (isNumeric(argv[task_variables + 1]) ||
+				    isNumeric(argv[task_variables + 2]) ||
+				    isNumeric(argv[task_variables + 3])) {
 					RCLCPP_ERROR(node->get_logger(),
-								"absolute_move: expected tip_frame and target_frame as non-numeric strings");
+						"absolute_move: expected tip_frame and target_frame as non-numeric strings");
 					rclcpp::shutdown();
 					return 1;
 				}
 				std::string frame_id = argv[task_variables + 1];
 				std::string tip      = argv[task_variables + 2];
 				std::string target   = argv[task_variables + 3];
-				builder.absoluteMove(frame_id, tip, target);
-			
+
+				// If tip and target are the same, perform a TF lookup from "map" -> tip
+				if (tip == target) {
+					static tf2_ros::Buffer tf_buffer(node->get_clock());
+					static tf2_ros::TransformListener tf_listener(tf_buffer);
+					try {
+						geometry_msgs::msg::TransformStamped tf_transform =
+							tf_buffer.lookupTransform(frame_id, tip, rclcpp::Time(0), rclcpp::Duration(1, 0)); // 1s timeout
+						double x  = tf_transform.transform.translation.x;
+						double y  = tf_transform.transform.translation.y;
+						double z  = tf_transform.transform.translation.z;
+						double rx = tf_transform.transform.rotation.x;
+						double ry = tf_transform.transform.rotation.y;
+						double rz = tf_transform.transform.rotation.z;
+						double rw = tf_transform.transform.rotation.w;
+						// Write the transformed coordinate to the JSON entry:
+						entry["absolute_move"][frame_id] = {
+							{ "position",   { x, y, z } },
+							{ "quaternion", { rx, ry, rz, rw } }
+						};
+						RCLCPP_INFO(node->get_logger(),
+							"[absolute_move] TF lookup from 'map' to '%s' succeeded.", tip.c_str());
+					} catch (const tf2::TransformException &ex) {
+						RCLCPP_ERROR(node->get_logger(), "TF lookup failed: %s", ex.what());
+					}
+				} else {
+					// Otherwise, log the provided tip and target strings.
+					builder.absoluteMove(frame_id, tip, target);
+					// Format:
+					//  "1713338342.2387867": {
+					//   "absolute_move": {
+					//    "tf_end": {
+					//     "tip": tip_link
+					//     "target": box
+					//    }
+					//   }
+					//  }
+					entry["absolute_move"][frame_id] = {
+						{ "tip",    tip },
+						{ "target", target }
+					};
+				}
+
 			} else if (argc == (default_variables + 8)) {
-				// Check if argv[11] to argv[17] are all numeric values
+				// Check if argv[task_variables+2] to argv[task_variables+8] are all numeric values
 				bool numeric_args = true;
-				for (int i = (task_variables + 2); i <= (task_variables + 6); ++i) {
+				for (int i = (task_variables + 2); i <= (task_variables + 8); ++i) {
 					if (!isNumeric(argv[i])) {
 						numeric_args = false;
 						break;
@@ -624,7 +667,7 @@ int main(int argc, char** argv)
 				}
 				if (!numeric_args) {
 					RCLCPP_ERROR(node->get_logger(),
-								"absolute_move: expected 7 numeric arguments for x, y, z, rx, ry, rz, rw");
+						"absolute_move: expected 7 numeric arguments for x, y, z, rx, ry, rz, rw");
 					rclcpp::shutdown();
 					return 1;
 				}
@@ -636,11 +679,35 @@ int main(int argc, char** argv)
 				double ry = std::stod(argv[task_variables + 6]);
 				double rz = std::stod(argv[task_variables + 7]);
 				double rw = std::stod(argv[task_variables + 8]);
+				// Call builder.absoluteMove with explicit coordinates.
 				builder.absoluteMove(frame_id, "wrist3_link", "", x, y, z, rx, ry, rz, rw);
+
+				// Format:
+				//  "1713338342.2387867": {
+				//   "absolute_move": {
+				//    "tf_end": {
+				//     "position": [
+				//      0.0,
+				//      0.5,
+				//      0.2
+				//     ],
+				//     "quaternion": [
+				//      0,
+				//      0,
+				//      0,
+				//      1
+				//     ]
+				//    }
+				//   }
+				//  }
+				entry["absolute_move"][frame_id] = {
+					{ "position",   { x, y, z } },
+					{ "quaternion", { rx, ry, rz, rw } }
+				};
 			} else {
 				RCLCPP_ERROR(node->get_logger(),
-							"Syntax Error! Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
-							"absolute_move <frame_id> <x> <y> <z> <rx> <ry> <rz> <rw>");
+					"Syntax Error! Usage: absolute_move <frame_id> <tip_frame> <target_frame> OR "
+					"absolute_move <frame_id> <x> <y> <z> <rx> <ry> <rz> <rw>");
 				rclcpp::shutdown();
 				return 1;
 			}
@@ -648,37 +715,6 @@ int main(int argc, char** argv)
 				RCLCPP_ERROR(node->get_logger(), "Task Interrupted!");
 				return 1;
 			}
-			// Format:
-			//  "1713338342.2387867": {
-			//   "absolute_move": {
-			//    "tf_end": {
-			//     "position": [
-			//      0.0,
-			//      0.5,
-			//      0.2
-			//     ],
-			//     "quaternion": [
-			//      0,
-			//      0,
-			//      0,
-			//      1
-			//     ]
-			//    }
-			//   }
-			//  }
-			// We'll replicate old "end_coordinate" wrapping with "absolute_move":
-			std::string frame_id = argv[task_variables + 1];
-			double x  = std::stod(argv[task_variables + 2]);
-			double y  = std::stod(argv[task_variables + 3]);
-			double z  = std::stod(argv[task_variables + 4]);
-			double rx = std::stod(argv[task_variables + 5]);
-			double ry = std::stod(argv[task_variables + 6]);
-			double rz = std::stod(argv[task_variables + 7]);
-			double rw = std::stod(argv[task_variables + 8]);
-			entry["absolute_move"][frame_id] = {
-			{ "position",   { x, y, z } },
-			{ "quaternion", { rx, ry, rz, rw } }
-			};
 		}
 		break;
 

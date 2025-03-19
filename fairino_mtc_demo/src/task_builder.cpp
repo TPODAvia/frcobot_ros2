@@ -994,7 +994,8 @@ void TaskBuilder::jointsMove(const std::vector<double>& joint_values)
 
     std::map<std::string, double> joints_map;
     for (size_t i = 0; i < joint_names_.size(); ++i) {
-        joints_map[joint_names_[i]] = joint_values[i];
+        // joints_map[joint_names_[i]] = joint_values[i]; // This is more versatile bit requires some sorting algorithm
+        joints_map["j" + std::to_string(i+1)] = joint_values[i];
     }
 
     if (!current_solver_) {
@@ -1022,17 +1023,25 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
 {
     geometry_msgs::msg::PoseStamped goal_pose_stamped;
     std::string task_name = "move_to_absolute_pose";
-
-    // Check if user provided a named target frame, or direct coordinates
+    
+    // If tip_frame and target_frame are provided, check if the target object exists in the environment.
     if (!tip_frame.empty() && !target_frame.empty()) 
     {
+        moveit::planning_interface::PlanningSceneInterface psi;
+        auto known_objects = psi.getKnownObjectNames();
+        if (std::find(known_objects.begin(), known_objects.end(), target_frame) == known_objects.end()) {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "[absolute_move] Object '%s' is not present in the environment. Aborting.",
+                         target_frame.c_str());
+            executed_ = false;
+            return;
+        }
         RCLCPP_INFO(node_->get_logger(),
-                    "[absolute_move] Attempting to interpret tip_frame='%s' and target_frame='%s' via TF or memory.",
-                    tip_frame.c_str(), target_frame.c_str());
+                    "[absolute_move] Target object '%s' found in environment. Attempting to load pose from memory or TF.",
+                    target_frame.c_str());
         task_name = "move_to_frames";
 
         bool loaded_from_memory = false;
-        // Try object_data.yaml
         try {
             std::string pkg_share = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
             std::string memory_dir = pkg_share + "/memory/";
@@ -1058,7 +1067,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
 
         if (!loaded_from_memory)
         {
-            // Try TF
+            // Try TF lookup if the object data wasn't loaded from memory.
             RCLCPP_INFO(node_->get_logger(),
                         "[absolute_move] Attempting TF lookup from '%s' -> '%s'.",
                         frame_id.c_str(), target_frame.c_str());
@@ -1093,7 +1102,7 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
     }
     else
     {
-        // Direct coordinates
+        // Use direct coordinates.
         if (std::isnan(x) || std::isnan(y) || std::isnan(z) ||
             std::isnan(rx) || std::isnan(ry) || std::isnan(rz) || std::isnan(rw))
         {
@@ -1119,7 +1128,8 @@ void TaskBuilder::absoluteMove(const std::string& frame_id,
     }
 
     if (!current_solver_) {
-        RCLCPP_ERROR(node_->get_logger(), "[absolute_move] No active solver set. Use choosePipeline() first.");
+        RCLCPP_ERROR(node_->get_logger(),
+                     "[absolute_move] No active solver set. Use choosePipeline() first.");
         executed_ = false;
         return;
     }
@@ -1305,6 +1315,76 @@ void TaskBuilder::detachObject(const std::string& object_name, const std::string
         return;
     }
 
+    // Retrieve the attached object's data
+    auto it = attached_objects.find(object_name);
+    if (it == attached_objects.end()) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Attached body '%s' not found in attached objects map. Aborting operation.", object_name.c_str());
+        executed_ = false;
+        return;
+    }
+    const auto &attached_obj = it->second;
+    const moveit_msgs::msg::CollisionObject& obj_msg = attached_obj.object;
+
+    // --- Gather data for saving to YAML (similar to removeObject) ---
+    StoredObjectData data;
+    if (!obj_msg.primitive_poses.empty()) {
+        data.pose = obj_msg.pose; // Alternatively, use obj_msg.primitive_poses[0]
+    }
+    if (!obj_msg.primitives.empty()) {
+        const auto &prim = obj_msg.primitives[0];
+        switch(prim.type) {
+          case shape_msgs::msg::SolidPrimitive::BOX:
+            data.shape = "box";
+            break;
+          case shape_msgs::msg::SolidPrimitive::SPHERE:
+            data.shape = "sphere";
+            break;
+          case shape_msgs::msg::SolidPrimitive::CYLINDER:
+            data.shape = "cylinder";
+            break;
+          case shape_msgs::msg::SolidPrimitive::CONE:
+            data.shape = "cone";
+            break;
+          default:
+            data.shape = "unknown";
+        }
+        for (double d : prim.dimensions) {
+            data.dimensions.push_back(d);
+        }
+    }
+    data.color = "#FFFFFF";
+    data.alpha = 1.0;
+
+    // Save the object's data to YAML
+    std::string package_share_directory;
+    try {
+        package_share_directory = ament_index_cpp::get_package_share_directory("fairino_mtc_demo");
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Failed to get package share directory for 'fairino_mtc_demo': %s", e.what());
+        executed_ = false;
+        return;
+    }
+    std::string memory_dir = package_share_directory + "/memory/";
+    if (!fs::exists(memory_dir)) {
+        try {
+            fs::create_directories(memory_dir);
+        } catch (const fs::filesystem_error& e) {
+            RCLCPP_ERROR(node_->get_logger(),
+                         "Failed to create memory directory: %s", e.what());
+            executed_ = false;
+            return;
+        }
+    }
+    std::string object_data_file = memory_dir + "object_data.yaml";
+    auto current_data = loadAllObjectData(object_data_file);
+    current_data[object_name] = data;
+    saveAllObjectData(object_data_file, current_data);
+    RCLCPP_INFO(node_->get_logger(), "Saved detached object '%s' info to %s", 
+                object_name.c_str(), object_data_file.c_str());
+
+    // Now build and add the detach stage
     auto stage = std::make_unique<mtc::stages::ModifyPlanningScene>("detach object");
     stage->detachObject(object_name, link_name);
     task_.add(std::move(stage));

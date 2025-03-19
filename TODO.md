@@ -5,6 +5,8 @@
 - Dettach also need to be registered the current position (done)
 - Add tool for absolute end tool position and orientation (done)
 - Executor code does not do anything
+- absolute_move world tip_link box are still now are not moving to the object after detaching it.
+
 https://github.com/AndrejOrsula/moveit2_calibration/tree/ros2_port
 
 

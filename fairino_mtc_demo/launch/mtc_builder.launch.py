@@ -7,28 +7,24 @@ from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
 
 # Adjust these to match your actual package and robot settings.
-packagename = "fairino10_v6_moveit2_config"
-robot_name = "fairino10_v6_robot"
-arm_group_name = "fairino10_v6_group"
-tip_frame = "tip_link"
+packagename     = "fairino10_v6_moveit2_config"
+robot_name      = "fairino10_v6_robot"
+arm_group_name  = "fairino10_v6_group"
+tip_frame       = "tip_link"
 
 # Fixed configuration flags.
-exec_task = True
-save_json = True
-reserved_1 = "default"
-reserved_2 = "default"
-reserved_3 = "default"
-virtual_base = True
+exec_task       = True
+save_json       = True
+reserved_1      = "default"
+reserved_2      = "default"
+reserved_3      = "default"
+virtual_base    = True
 
 # Get the home directory and define file paths.
-home_dir = os.path.expanduser("~")
-default_json_path = os.path.join(
-    home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/"
-)
-json_sim_content = os.path.join(default_json_path, "test.json")
-trajectoy_file = os.path.join(
-    home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/csv_demo.csv"
-)
+home_dir            = os.path.expanduser("~")
+default_json_path   = os.path.join(home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/")
+json_sim_content    = os.path.join(default_json_path, "test.json")
+trajectoy_file      = os.path.join(home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/csv_demo.csv")
 
 def launch_setup(context, moveit_config):
     # Fixed base arguments.

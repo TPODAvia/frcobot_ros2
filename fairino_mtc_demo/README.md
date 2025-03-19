@@ -251,13 +251,20 @@ This universal launch file provides a flexible and easy way to execute a variety
 Feel free to modify this README to better fit your project details or to add any additional notes for your users.
 
 
+```
+ros2 launch fairino_mtc_demo mtc_executor_json.launch.py 
 
+```
+
+
+```
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="clear_scene"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="spawn_object box 0 0.3 0.6 0.98 -0.006 0.1852 -0.03 0.05 0.05 0.05"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move 0.0 -1.57 1.57 0 0 0"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link box"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="attach_object box tip_link"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="displacement_move world tip_link 0.0 0.0 0.05 0.0 0.0 1.1"
-ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="joints_move"
+ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="absolute_move world tip_link tip_link"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="detach_object box tip_link"
 ros2 launch fairino_mtc_demo mtc_builder.launch.py command_list:="remove_object box"
+```

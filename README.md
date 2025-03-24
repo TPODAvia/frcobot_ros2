@@ -38,6 +38,10 @@ export RCUTILS_COLORIZED_OUTPUT=1
 ros2 launch fairino_mtc_demo moveit_sim.launch.py
 ```
 
+```bash
+ros2 launch fairino_mtc_demo mtc_executor_json.launch.py
+```
+
 ### Launch MoveIt Task Constructor
 ```bash
 ros2 launch fairino_mtc_demo mtc_builder.launch.py

@@ -204,6 +204,7 @@ private:
     // ------------- Private Members ---------------
     rclcpp::Node::SharedPtr node_;
     mtc::Task task_;
+    moveit::core::RobotModelConstPtr robot_model_;
     std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
     // Planners
     std::shared_ptr<mtc::solvers::PipelinePlanner> sampling_planner_;

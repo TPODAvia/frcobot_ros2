@@ -156,13 +156,23 @@ void TaskBuilder::newTask(const std::string& task_name)
 {
     // Clear any existing task
     task_.clear();
-    // Create a brand new MTC Task
     task_.stages()->setName(task_name);
-    task_.loadRobotModel(node_);
+
+    // Only load the robot model once
+    if (!robot_model_) {
+        task_.loadRobotModel(node_);
+        robot_model_ = task_.getRobotModel();
+    } else {
+        task_.setRobotModel(robot_model_);
+    }
 
     // Set MTC properties from our member variables
     task_.setProperty("group", arm_group_name_);
     task_.setProperty("ik_frame", tip_frame_);
+
+    // Also update the active solver to use the same robot model
+    if (current_solver_)
+      current_solver_->setProperty("robot_model", robot_model_);
 
     // Always start with a CurrentState stage as the first stage
     auto current_state_stage = std::make_unique<mtc::stages::CurrentState>("current state");
@@ -412,6 +422,7 @@ void TaskBuilder::choosePipeline(const std::string& pipeline_name,
         ompl_planner->setPlannerId(planner_id.empty() ? "RRTConnectkConfigDefault" : planner_id);
         ompl_planner->setProperty("max_velocity_scaling_factor", max_vel_factor);
         ompl_planner->setProperty("max_acceleration_scaling_factor", max_acc_factor);
+        // ompl_planner->setProperty("robot_model", task_.getRobotModel());  // Ensure same robot model pointer
         solvers_["ompl_RRTConnect"] = ompl_planner;
 
         RCLCPP_INFO(node_->get_logger(), "Initialized OMPL solver: RRTConnect");

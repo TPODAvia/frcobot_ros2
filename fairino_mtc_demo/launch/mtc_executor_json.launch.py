@@ -58,7 +58,7 @@ def generate_launch_description():
     # Declare launch arguments.
     arm_arg      = DeclareLaunchArgument('arm_group_name', default_value=default_arm)
     tip_arg      = DeclareLaunchArgument('tip_frame',      default_value=default_tip)
-    exec_arg     = DeclareLaunchArgument('exec_task',      default_value='false')
+    exec_arg     = DeclareLaunchArgument('exec_task',      default_value='true')
     
     home_dir = os.path.expanduser("~")
     default_json = os.path.join(home_dir, "colcon_ws/src/frcobot_ros2/fairino_mtc_demo/tasks/fr10/test.json")

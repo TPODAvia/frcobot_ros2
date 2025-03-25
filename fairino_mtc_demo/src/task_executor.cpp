@@ -64,25 +64,12 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Create node. MoveIt configuration parameters are loaded via the launch file.
+    // Create node. The MoveIt configuration parameters are loaded via the launch file.
     rclcpp::NodeOptions options;
     options.automatically_declare_parameters_from_overrides(true);
     auto node = std::make_shared<rclcpp::Node>("task_generator_node", options);
 
     // Create TaskBuilder.
-    // (NOTE: In the modified TaskBuilder, modify newTask() so that it stores and reuses the robot model.
-    // For example, add a member variable robot_model_ and in newTask():
-    //
-    //   if(robot_model_) {
-    //     task_.setRobotModel(robot_model_);
-    //   } else {
-    //     task_.loadRobotModel(node_);
-    //     robot_model_ = task_.getRobotModel();
-    //   }
-    //
-    // Also ensure that any new solver is updated with:
-    //   solver->setProperty("robot_model", task_.getRobotModel());
-    // )
     TaskBuilder builder(node, arm_group, tip_frame);
 
     // Load JSON file.
@@ -102,7 +89,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Process each JSON entry one by one.
+    // Process each JSON command one-by-one.
     for (auto& entry : tasks_array) {
         if (!entry.is_object()) {
         RCLCPP_WARN(node->get_logger(), "Skipping non-object entry in JSON array.");
@@ -115,11 +102,10 @@ int main(int argc, char** argv)
             continue;
         }
 
-        // Create a new task for this command. This resets the task while reusing the same robot model.
-        // (Assuming TaskBuilder::newTask() has been modified accordingly.)
+        // Create a new task for this command.
         builder.newTask("task_" + timestamp);
 
-        // Process supported commands.
+        // Process each command:
         if (cmd_obj.contains("clear_scene")) {
             builder.clearScene();
         }
@@ -245,16 +231,17 @@ int main(int argc, char** argv)
             RCLCPP_WARN(node->get_logger(), "Unknown command in JSON. Skipping.");
         }
 
-        // (Optional) spawn a virtual base if needed.
+        // Optionally spawn the virtual base if requested by this command.
         builder.spawn_virtual_base(virtual_base);
 
-        // Plan this single task.
+        // Plan the task for this command.
         if (!builder.planTask()) {
             RCLCPP_ERROR(node->get_logger(), "Failed to plan MTC task for command at %s", timestamp.c_str());
             rclcpp::shutdown();
             return 1;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        // Allow time for the planning scene to update.
+        std::this_thread::sleep_for(std::chrono::seconds(2));
 
         if (exec_task == "true") {
             if (!builder.executeTask()) {
@@ -263,6 +250,8 @@ int main(int argc, char** argv)
             return 1;
             }
         }
+        // After execution, wait a short while to let the scene update before proceeding.
+        std::this_thread::sleep_for(std::chrono::seconds(2));
         }
     }
 

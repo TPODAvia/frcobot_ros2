@@ -13,7 +13,7 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 # ros2 launch fairino_mtc_demo mtc_builder.launch.py
 
 # hardware_type = gazebo, fake, real
-hardware_type = "fake"
+hardware_type = "gazebo"
 
 def generate_launch_description():
     moveit_config = (
@@ -35,6 +35,7 @@ def generate_launch_description():
             moveit_config.to_dict(),
             move_group_capabilities,
             {"use_sim_time": True},
+            # os.path.join(get_package_share_directory("fairino_mtc_demo"), "config", "sensor_3d.yaml")
         ],
     )
 

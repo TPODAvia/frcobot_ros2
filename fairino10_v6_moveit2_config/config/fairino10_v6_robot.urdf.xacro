@@ -16,6 +16,66 @@
   <!-- Your base URDF geometry -->
   <xacro:include filename="$(find fairino_description)/urdf/fairino10_v6.urdf" />
 
+  <!-- Conditionally add depth camera if using gazebo -->
+    <!-- Depth Camera Link -->
+    <link name="camera_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.1 0.1 0.1"/>
+        </geometry>
+        <material name="gray">
+          <color rgba="0.5 0.5 0.5 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.1 0.1 0.1"/>
+        </geometry>
+      </collision>
+    </link>
+    <!-- Depth Camera Joint (attach camera_link to base_link) -->
+    <joint name="camera_joint" type="fixed">
+      <origin xyz="0.2 0 0.8" rpy="0 0 0"/>
+      <parent link="base_link"/>
+      <child link="camera_link"/>
+    </joint>
+    <!-- Gazebo sensor plugin for depth simulation -->
+    <gazebo reference="camera_link">
+      <sensor type="depth" name="depth_sensor">
+        <update_rate>30</update_rate>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>5.0</far>
+          </clip>
+        </camera>
+        <plugin name="camera_driver1" filename="libgazebo_ros_camera.so">
+            <!-- Keep plugin at 30 Hz -->
+            <update_rate>30</update_rate>
+
+            <camera_name>camera_depth</camera_name>
+            <frame_name>camera_depth</frame_name>
+
+            <!-- Topics as requested -->
+            <imageTopicName>/camera_depth/image_raw</imageTopicName>
+            <cameraInfoTopicName>/camera_depth/camera_info</cameraInfoTopicName>
+            <depthImageTopicName>/camera_depth/depth/image_raw</depthImageTopicName>
+
+            <!-- Approximate OAK-D Lite stereo baseline of ~7.5 cm -->
+            <hack_baseline>0.075</hack_baseline>
+
+            <min_depth>0.2</min_depth>
+            <max_depth>9.0</max_depth>
+        </plugin>
+      </sensor>
+    </gazebo>
 
   <xacro:include filename="fairino10_v6_robot_fake.ros2_control.xacro" />
   <xacro:fairino10_v6_robot_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>

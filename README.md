@@ -1,94 +1,75 @@
-# FRCobot ROS2
+# frcobot_ros
 
-FRCobot ROS2 is a ROS 2 package for controlling FR10 collaborative robots using MoveIt and a task-based motion planning framework. This package includes demos for motion planning, object manipulation, and robot control, enabling users to execute predefined and custom robot trajectories.
+This repository is dedicated to providing comprehensive resources and tools for working with ERACOBOT manipulators. 
 
-## Features
-- Motion planning using MoveIt 2
-- Task-based manipulation with MoveIt Task Constructor (MTC)
-- Object manipulation (spawn, attach, detach, and remove objects)
-- Scene management and simulation
-- Integration with MoveIt Python API for scripting robot movements
-- Support for FR10 robot control
+<!-- ![alt text](./docs/demo.gif) -->
 
-## Installation
+#### Install ROS
 
-### Prerequisites
-Ensure you have the following installed:
-- **ROS 2 Humble or newer**
-- **MoveIt 2**
-- **Python 3**
-- **Colcon build tools**
-
-### Clone and Build
 ```bash
-git clone https://github.com/TPODAvia/frcobot_ros2.git
-cd frcobot_ros2
-rosdep update
-rosdep install --from-paths src --ignore-src -r -y
-export MAKEFLAGS="-j2"
-colcon build --symlink-install
-source install/setup.bash
-export RCUTILS_COLORIZED_OUTPUT=1
+sudo apt update
+```
+```bash
+sudo apt install git python3-pip python3-schedule -y
+```
+```bash
+mkdir -p ~/colcon_ws/src
+cd ~/colcon_ws/src
+git clone https://github.com/Tiryoh/ros2_setup_scripts_ubuntu.git
+chmod +x ros2_setup_scripts_ubuntu/ros2-humble-desktop-main.sh
+sudo ./ros2_setup_scripts_ubuntu/ros2-humble-desktop-main.sh
 ```
 
-## Usage
+```bash
+cd ~/colcon_ws/src
+git clone https://github.com/TPODAvia/frcobot_ros2.git --recursive
+git clone https://github.com/AndrejOrsula/moveit2_calibration.git
+# sudo cp ~/colcon_ws/src/frcobot_ros/frcobot_hw/lib/* /opt/ros/noetic/lib
 
-### Launch MoveIt Simulation
+
+cd ~/colcon_ws
+sudo rosdep init
+
+rosdep update
+rosdep install --from-paths src --ignore-src -y
+
+```
+
+Compile the project
+```bash
+catkin_make
+source devel/setup.bash
+```
+
+## Gazebo simulation
+
 ```bash
 ros2 launch fairino_mtc_demo moveit_sim.launch.py
 ```
 
+## Real robot simulation
+
 ```bash
-ros2 launch fairino_mtc_demo mtc_executor_json.launch.py
+In the development...
 ```
 
-### Launch MoveIt Task Constructor
+## Use fairino_mtc_demo module
+
+The package is the wrapper of MoveIt Task Constructor (MTC) for simple create and store the task pipeline.
+[Working with fairino_mtc_demo](fairino_mtc_demo/README.md)
+
+## Install mongo database
 ```bash
-ros2 launch fairino_mtc_demo mtc_builder.launch.py
+sudo apt-get install mongodb-server
+sudo apt-get install mongodb-dev
+sudo apt-get install ros-humble-warehouse-ros
+sudo apt-get install ros-humble-warehouse-ros-mongo
 ```
 
-### Execute Joint Movements
-Move the robot to a specific joint configuration:
-```bash
-ros2 run fairino_mtc_demo task_generator joints_move 0 -1.57 1.57 0 0 0
-```
+## Working with moveit_callibration
 
-## Task-Based Motion Planning
-The package provides a set of scripts to execute different robotic actions:
-```bash
-rosrun moveit_python task_generator.py fr10 joints_move 0 0 0 0 0 0
-rosrun moveit_python task_generator.py fr10 absolute_move absolute_move
-rosrun moveit_python task_generator.py fr10 spawn_object hello_box 0 0.5 0.2
-rosrun moveit_python task_generator.py fr10 attach_object hello_box absolute_move
-rosrun moveit_python task_generator.py fr10 detach_object hello_box absolute_move
-rosrun moveit_python task_generator.py fr10 remove_object hello_box
-rosrun moveit_python task_generator.py fr10 gripper_open
-rosrun moveit_python task_generator.py fr10 gripper_close
-```
+In the development...
 
-## Additional Functionalities
-- **Scene Management**
-  - Save/load/reset scene states
-  - Edit object properties (size, material, color, etc.)
-- **Motion Control**
-  - Relative movement
-  - Move to home position
-  - Rotate objects
-  - Adjust speed and acceleration
-- **Advanced Robot Controls**
-  - Pause/resume/stop robot motion
-  - Calibrate robot
-  - Configure workspace boundaries
-- **User and Debugging Tools**
-  - Enable debug mode
-  - Log user actions
-  - Import G-code for complex tasks
-  
-## Contribution
-Contributions are welcome! Feel free to submit pull requests or open issues.
+# Interactive usage using interactive image and joystick
 
-## License
-This project is licensed under the MIT License. See LICENSE for details.
-
----
-For detailed usage of the **fairino_mtc_demo** package, refer to its [README](fairino_mtc_demo/README.md).
+In the development...

@@ -60,10 +60,28 @@ The package is the wrapper of MoveIt Task Constructor (MTC) for simple create an
 
 ## Install mongo database
 ```bash
-sudo apt-get install mongodb-server
-sudo apt-get install mongodb-dev
-sudo apt-get install ros-humble-warehouse-ros
-sudo apt-get install ros-humble-warehouse-ros-mongo
+# Install MongoDB and BSON development libraries
+sudo apt install -y libmongoc-dev libbson-dev
+
+# Install essential ROS 2 Humble packages
+sudo apt install -y \
+  ros-humble-gazebo-ros-pkgs \
+  ros-humble-joint-trajectory-controller \
+  ros-humble-gazebo-ros2-control \
+  ros-humble-controller-manager \
+  ros-humble-realtime-tools \
+  ros-humble-xacro \
+  ros-humble-moveit* \
+  ros-humble-turtle-tf2-py \
+  ros-humble-tf2-tools \
+  ros-humble-tf-transformations \
+  ros-humble-ros-testing \
+  ros-humble-realsense2-camera \
+  ros-humble-libpointmatcher \
+  ros-humble-gtsam \
+  ros-humble-rmw-cyclonedds-cpp \
+  ros-humble-ros2-control \
+  ros-humble-ros2-controllers
 ```
 
 ## Working with moveit_callibration

@@ -12,11 +12,12 @@ sensors:
 #     filtered_cloud_topic: /camera_depth/filtered_points
 camera_2_depth_image:
     sensor_plugin: occupancy_map_monitor/DepthImageOctomapUpdater
-    image_topic: /camera_depth/depth/image_raw
+    image_topic: /sync/camera_depth/depth/image_raw
     queue_size: 5
     near_clipping_plane_distance: 0.3
     far_clipping_plane_distance: 5.0
     shadow_threshold: 0.2
     padding_scale: 1.0
     max_update_rate: 1.0
-    filtered_cloud_topic: /camera_depth/filtered_points
+    filtered_cloud_topic: /sync/camera_depth/filtered_points
+    approximate_sync: true

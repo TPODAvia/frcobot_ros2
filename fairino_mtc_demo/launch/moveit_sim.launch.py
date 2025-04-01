@@ -7,23 +7,22 @@ from launch_ros.actions import Node
 from moveit_configs_utils import MoveItConfigsBuilder
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
-# ros2 launch moveit_task_constructor_demo demo.launch.py
-# ros2 launch fairino_mtc_demo moveit_sim.launch.py
-# ros2 launch fairino_mtc_demo mtc_builder.launch.py
+from launch.substitutions import PythonExpression
+
 
 # hardware_type = gazebo, fake, real
 hardware_type = "gazebo"
+use_sim_time = True
 
 def generate_launch_description():
     moveit_config = (
-        MoveItConfigsBuilder(robot_name="fairino10_v6", package_name = "fairino10_v6_moveit2_config")
+        MoveItConfigsBuilder(robot_name="fairino10_v6", package_name="fairino10_v6_moveit2_config")
         .planning_pipelines(pipelines=["ompl"])
         .robot_description(file_path="config/fairino10_v6_robot.urdf.xacro", mappings={"hardware_type": hardware_type})
         .to_moveit_configs()
     )
 
-    # Load  ExecuteTaskSolutionCapability so we can execute found solutions in simulation
+    # Load ExecuteTaskSolutionCapability so we can execute found solutions in simulation
     move_group_capabilities = {"capabilities": "move_group/ExecuteTaskSolutionCapability"}
 
     # Start the actual move_group node/action server
@@ -34,7 +33,7 @@ def generate_launch_description():
         parameters=[
             moveit_config.to_dict(),
             move_group_capabilities,
-            {"use_sim_time": True},
+            {"use_sim_time": use_sim_time},
             # os.path.join(get_package_share_directory("fairino_mtc_demo"), "config", "sensor_3d.yaml")
         ],
     )
@@ -54,6 +53,7 @@ def generate_launch_description():
             moveit_config.robot_description_semantic,
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
+            {"use_sim_time": use_sim_time},
         ],
     )
 
@@ -63,7 +63,10 @@ def generate_launch_description():
         executable="robot_state_publisher",
         name="robot_state_publisher",
         output="both",
-        parameters=[moveit_config.robot_description],
+        parameters=[
+            moveit_config.robot_description,
+            {"use_sim_time": use_sim_time},
+        ],
     )
 
     # ros2_control using FakeSystem as hardware
@@ -93,18 +96,28 @@ def generate_launch_description():
             )
         ]
 
-    # Use only the Gazebo bringup (which hopefully starts gazebo + spawns robot)\
+    # Use only the Gazebo bringup
     gazebo_bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory('robotic_arms_control'), 
-                'launch', 
+                get_package_share_directory('robotic_arms_control'),
+                'launch',
                 'gazebo_bringup.launch.py'
             )
         ),
         condition=IfCondition(PythonExpression(["'", hardware_type, "' == 'gazebo'"]))
     )
 
+    # Launch the depth camera sync node
+    depth_sync_node = Node(
+        package="depth_camera_sync",  # Adjust package name if different
+        executable="depth_sync_node",
+        name="depth_sync_node",
+        output="screen",
+        parameters=[
+            {"use_sim_time": use_sim_time, "enable_sync": True}
+        ]
+    )
 
     return LaunchDescription(
         [
@@ -113,6 +126,7 @@ def generate_launch_description():
             run_move_group_node,
             ros2_control_node,
             gazebo_bringup,
+            depth_sync_node,
         ]
         + load_controllers
     )

@@ -9,12 +9,18 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import PythonExpression
 
+if "MOVEIT_MODE" not in os.environ:
+    raise EnvironmentError("MOVEIT_MODE environment variable is not set. Please set it to 'gazebo', 'fake', or 'real'.")
 
-# hardware_type = gazebo, fake, real
-hardware_type = "gazebo"
-use_sim_time = True
-
+hardware_type = os.environ["MOVEIT_MODE"]
+    
 def generate_launch_description():
+
+    if hardware_type == "real":
+        use_sim_time = False
+    else:
+        use_sim_time = True
+
     moveit_config = (
         MoveItConfigsBuilder(robot_name="fairino10_v6", package_name="fairino10_v6_moveit2_config")
         .planning_pipelines(pipelines=["ompl"])
@@ -34,7 +40,6 @@ def generate_launch_description():
             moveit_config.to_dict(),
             move_group_capabilities,
             {"use_sim_time": use_sim_time},
-            # os.path.join(get_package_share_directory("fairino_mtc_demo"), "config", "sensor_3d.yaml")
         ],
     )
 
@@ -53,7 +58,6 @@ def generate_launch_description():
             moveit_config.robot_description_semantic,
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
-            {"use_sim_time": use_sim_time},
         ],
     )
 
@@ -75,11 +79,14 @@ def generate_launch_description():
         "config",
         "ros2_controllers.yaml",
     )
+
+    # This don't need this in gazebo mode
     ros2_control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[moveit_config.robot_description, ros2_controllers_path],
         output="both",
+        condition=IfCondition(PythonExpression(["'", hardware_type, "' == 'fake'"]))
     )
 
     # Load controllers

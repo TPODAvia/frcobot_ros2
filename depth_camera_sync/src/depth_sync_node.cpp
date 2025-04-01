@@ -2,6 +2,7 @@
 #include <rclcpp/qos.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -28,6 +29,7 @@ public:
     // Publishers on /sync/... topics using the custom QoS profile
     pub_image_ = this->create_publisher<sensor_msgs::msg::Image>("/sync/camera_depth/depth/image_raw", custom_qos);
     pub_info_  = this->create_publisher<sensor_msgs::msg::CameraInfo>("/sync/camera_depth/depth/camera_info", custom_qos);
+    pub_points_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/sync/camera_depth/points", custom_qos);
 
     if (enable_sync_) {
       RCLCPP_INFO(this->get_logger(), "Synchronization enabled. Publishing synced messages.");
@@ -57,6 +59,11 @@ public:
           "/camera_depth/depth/camera_info", 10,
           std::bind(&DepthCameraSyncNode::infoCallback, this, std::placeholders::_1));
     }
+
+    // Create a subscription for /camera_depth/points using the custom QoS profile
+    sub_points_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+          "/camera_depth/points", 10,
+          std::bind(&DepthCameraSyncNode::pointsCallback, this, std::placeholders::_1));
   }
 
 private:
@@ -84,9 +91,16 @@ private:
     pub_info_->publish(*msg);
   }
 
+  // Callback for /camera_depth/points, simply forward the message
+  void pointsCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & msg)
+  {
+    pub_points_->publish(*msg);
+  }
+
   // Publishers
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_image_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_info_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_points_;
 
   // For approximate sync
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> sub_image_filter_;
@@ -97,6 +111,7 @@ private:
   // For direct pass-through
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_image_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr sub_info_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_points_;
 
   bool enable_sync_;
 };

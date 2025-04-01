@@ -37,14 +37,20 @@ rosdep install --from-paths src --ignore-src -y
 
 Compile the project
 ```bash
-catkin_make
-source devel/setup.bash
+colcon build --symlink-install
+source install/setup.bash
 ```
 
 ## Gazebo simulation
 
 ```bash
+export MOVEIT_MODE=gazebo
 ros2 launch fairino_mtc_demo moveit_sim.launch.py
+```
+
+If Gazebo crashing:
+```bash
+killall -9 gzserver &&  killall -9 gzclient
 ```
 
 ## Real robot simulation

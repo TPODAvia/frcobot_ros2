@@ -2,7 +2,10 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory , get_package_prefix
 import os
-from launch.actions import ExecuteProcess
+from launch.actions import ExecuteProcess, DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
+
 # ros2 launch moveit_task_constructor_demo demo.launch.py
 # ros2 launch robotic_arms_control gazebo_bringup.launch.py
 # ros2 launch robotic_arms_control controller_spawner.launch.py
@@ -22,13 +25,21 @@ def generate_launch_description():
         os.environ['GAZEBO_MODEL_PATH'] =  mesh_pkg_share_dir
 
     return LaunchDescription([
+
+        DeclareLaunchArgument(
+            "robot_state_publisher",
+            default_value="true",
+            description="Launch the robot_state_publisher node if true"
+        ),
+
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             name='robot_state_publisher',
             output='screen',
             arguments=[urdfFile],
-            # parameters=[{"use_sim_time": True}],
+            parameters=[{"use_sim_time": True}],
+            condition=IfCondition(LaunchConfiguration("robot_state_publisher"))
             ),
 
         ExecuteProcess(
@@ -40,6 +51,7 @@ def generate_launch_description():
             executable='spawn_entity.py',
             name='robot_spawner',
             output='screen',
+            parameters=[{"use_sim_time": True}],
             arguments=["-topic", "/robot_description", "-entity", "fairino10_v6_robot"]
             ),
 

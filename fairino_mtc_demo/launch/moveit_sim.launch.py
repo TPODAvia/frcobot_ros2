@@ -36,6 +36,7 @@ def generate_launch_description():
         package="moveit_ros_move_group",
         executable="move_group",
         output="screen",
+        arguments=['--ros-args', '--log-level', 'info'],
         parameters=[
             moveit_config.to_dict(),
             move_group_capabilities,
@@ -58,6 +59,7 @@ def generate_launch_description():
             moveit_config.robot_description_semantic,
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
+            {"use_sim_time": False},
         ],
     )
 
@@ -112,17 +114,20 @@ def generate_launch_description():
                 'gazebo_bringup.launch.py'
             )
         ),
-        condition=IfCondition(PythonExpression(["'", hardware_type, "' == 'gazebo'"]))
+        condition=IfCondition(PythonExpression(["'", hardware_type, "' == 'gazebo'"])),
+        launch_arguments={
+            'robot_state_publisher': "false"
+            }.items()
     )
 
     # Launch the depth camera sync node
     depth_sync_node = Node(
-        package="depth_camera_sync",  # Adjust package name if different
+        package="depth_camera_sync",
         executable="depth_sync_node",
         name="depth_sync_node",
         output="screen",
         parameters=[
-            {"use_sim_time": use_sim_time, "enable_sync": True}
+            {"max_publish_rate": 10.0, "enable_sync": True}
         ]
     )
 

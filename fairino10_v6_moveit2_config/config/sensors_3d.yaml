@@ -1,9 +1,10 @@
 octomap_resolution: 0.05
 sensors:
   - camera_pointcloud
-  - camera_depth_image
+  # - camera_depth_image
 
-# Camera type: Pointcloud <- this module for some reason is not working @TPODAvia
+#  This module in gazebo will work only when not max_update_rate > 0 @TPODAvia
+# Camera type: Pointcloud
 camera_pointcloud:
     sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
     point_cloud_topic: /sync/camera_depth/points
@@ -11,10 +12,10 @@ camera_pointcloud:
     point_subsample: 1
     padding_offset: 0.1
     padding_scale: 1.0
-    max_update_rate: 1.0
+    max_update_rate: 0.0 # The bug in source code to avoid this
     filtered_cloud_topic: /sync/camera_depth/filtered_points
 
-# Camera type: Depth
+# Camera type: Depth <- not very well filtering the self collision
 camera_depth_image:
     sensor_plugin: occupancy_map_monitor/DepthImageOctomapUpdater
     image_topic: /sync/camera_depth/depth/image_raw
@@ -22,7 +23,8 @@ camera_depth_image:
     near_clipping_plane_distance: 0.3
     far_clipping_plane_distance: 5.0
     shadow_threshold: 0.2
-    padding_scale: 1.0
-    max_update_rate: 1.0
+    padding_scale: 3.0
+    padding_offset: 0.05
+    max_update_rate: 0.0
     filtered_cloud_topic: /sync/camera_depth/filtered_points
     approximate_sync: true

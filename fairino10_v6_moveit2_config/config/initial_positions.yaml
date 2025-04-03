@@ -7,3 +7,5 @@ initial_positions:
   j4: 0
   j5: 0
   j6: 0
+  hand_finger_joint1: 0.00
+  hand_finger_joint2: 0.00

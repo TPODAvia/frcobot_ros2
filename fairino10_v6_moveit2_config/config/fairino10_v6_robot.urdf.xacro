@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="fairino10_v6_robot">
-  <xacro:property name="use_gripper" value="false"/>
+  <xacro:property name="use_gripper" value="true"/>
   
   <link name="world"/>
   <joint name="world_joint" type="fixed">
@@ -37,10 +37,20 @@
       <parent link="wrist3_link"/>
       <child link="tip_link"/>
     </joint>
-    <!-- <xacro:include filename="panda_hand.ros2_control.xacro" />
-    <xacro:panda_hand_ros2_control name="HandSystem"/> -->
+    <xacro:include filename="$(find fairino_description)/urdf/gripper.urdf" />
+
+    <!-- <xacro:include filename="gripper.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
+
+    <xacro:include filename="gripper.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="GazeboSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
+
+    <xacro:include filename="gripper.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="RealSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/> -->
+
   </xacro:if>
 
+  
   <xacro:unless value="${use_gripper}">
     <link name="tip_link"/>
     <joint name="tip_joint" type="fixed">

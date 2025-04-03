@@ -1,0 +1,11 @@
+gripper_hardware:
+  ros__parameters:
+    mode: "precision"        # (string) Mode of gripping
+    feedback_enabled: 0.0    # (0.0 or 1.0) Enables/disables sensor feedback
+    position: 0.0            # (0.0 - fully closed, 1.0 - fully open)
+    tolerance: 0.01          # (meters) Acceptable position deviation
+    power: 0.01              # (relative scale, 0.0 - 1.0)
+    velocity: 0.01           # (m/s) Speed of gripper
+    acceleration: 0.01       # (m/s^2)
+    force_limit: 10.0        # (Newtons) Max force
+    qos: 0                   # 0=System Default, 1=Reliable, 2=Best Effort

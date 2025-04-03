@@ -5,12 +5,12 @@
 - Add tool for absolute end tool position and orientation (done)
 - Executor code does not do anything (done)
 - The sensor_3d.yaml does not configure properly (Also added gazebo depth camera in xacro file) (done)
-- robot_state_publisher are terminating during launch
+- robot_state_publisher are terminating during launch (done)
 - camera_pointcloud not working (done)
 - move camera config to a better place and also refining launch pipeline (done)
 - absolute_move world tip_link box are still now are not moving to the object after detaching it.
 - add callibration pipeline
-- add gripper pipeline
+- add gripper pipeline. add use_gripper in the launch
 
 https://github.com/AndrejOrsula/moveit2_calibration/tree/ros2_port
 

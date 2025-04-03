@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <robot name="gripper">
+
+  <joint name="base_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.1134" rpy="0 0 1.57"/>
+    <parent link="wrist3_link"/>
+    <child link="hand_hand"/>
+  </joint>
+
+
   <!-- Main hand link -->
   <link name="hand_hand">
     <visual>
       <geometry>
-        <mesh filename="package://gripper_description/meshes/visual/hand.dae"/>
+        <mesh filename="package://fairino_description/meshes/gripper/hand.dae"/>
       </geometry>
     </visual>
     <collision>
@@ -57,7 +65,7 @@
   <link name="hand_leftfinger">
     <visual>
       <geometry>
-        <mesh filename="package://gripper_description/meshes/visual/finger.dae"/>
+        <mesh filename="package://fairino_description/meshes/gripper/finger.dae"/>
       </geometry>
     </visual>
   </link>
@@ -67,7 +75,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 3.14159265"/>
       <geometry>
-        <mesh filename="package://gripper_description/meshes/visual/finger.dae"/>
+        <mesh filename="package://fairino_description/meshes/gripper/finger.dae"/>
       </geometry>
     </visual>
   </link>
@@ -88,4 +96,5 @@
     <limit effort="20" lower="0.0" upper="0.04" velocity="0.2"/>
     <mimic joint="hand_finger_joint1"/>
   </joint>
+  
 </robot>

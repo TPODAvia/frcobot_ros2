@@ -33,6 +33,10 @@ sudo rosdep init
 rosdep update
 rosdep install --from-paths src --ignore-src -y
 
+sudo apt-get install ros-humble-warehouse* -y
+sudo apt-get install ros-moveit* -y
+sudo apt-get install ros-humble-rmw-cyclonedds-cpp
+
 ```
 
 Compile the project

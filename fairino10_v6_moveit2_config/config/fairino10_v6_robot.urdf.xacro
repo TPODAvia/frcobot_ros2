@@ -39,14 +39,14 @@
     </joint>
     <xacro:include filename="$(find fairino_description)/urdf/gripper.urdf" />
 
-    <!-- <xacro:include filename="gripper.ros2_control.xacro" />
-    <xacro:gripper_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
+    <xacro:include filename="gripper_fake.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="panda_hand_controller" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
 
-    <xacro:include filename="gripper.ros2_control.xacro" />
-    <xacro:gripper_ros2_control name="GazeboSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
+    <xacro:include filename="gripper_gazebo.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="panda_hand_controller" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
 
-    <xacro:include filename="gripper.ros2_control.xacro" />
-    <xacro:gripper_ros2_control name="RealSystem" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/> -->
+    <xacro:include filename="gripper_real.ros2_control.xacro" />
+    <xacro:gripper_ros2_control name="panda_hand_controller" initial_positions_file="$(arg initial_positions_file)" hardware_type="$(arg hardware_type)"/>
 
   </xacro:if>
 

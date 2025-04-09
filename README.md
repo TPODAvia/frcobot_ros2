@@ -34,9 +34,10 @@ rosdep update
 rosdep install --from-paths src --ignore-src -y
 
 sudo apt-get install ros-humble-warehouse* -y
-sudo apt-get install ros-moveit* -y
-sudo apt-get install ros-humble-rmw-cyclonedds-cpp
-
+sudo apt-get install ros-humble-moveit* -y
+sudo apt-get install ros-humble-rmw-cyclonedds-cpp -y
+sudo apt-get install ros-humble-gazebo-ros-pkgs -y
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```
 
 Compile the project
@@ -48,7 +49,7 @@ source install/setup.bash
 ## Gazebo simulation
 
 ```bash
-export MOVEIT_MODE=gazebo
+export MOVEIT_MODE=gazebo # gazebo, fake, real
 ros2 launch fairino_mtc_demo moveit_sim.launch.py
 ```
 
@@ -67,32 +68,6 @@ In the development...
 
 The package is the wrapper of MoveIt Task Constructor (MTC) for simple create and store the task pipeline.
 [Working with fairino_mtc_demo](fairino_mtc_demo/README.md)
-
-## Install mongo database
-```bash
-# Install MongoDB and BSON development libraries
-sudo apt install -y libmongoc-dev libbson-dev
-
-# Install essential ROS 2 Humble packages
-sudo apt install -y \
-  ros-humble-gazebo-ros-pkgs \
-  ros-humble-joint-trajectory-controller \
-  ros-humble-gazebo-ros2-control \
-  ros-humble-controller-manager \
-  ros-humble-realtime-tools \
-  ros-humble-xacro \
-  ros-humble-moveit* \
-  ros-humble-turtle-tf2-py \
-  ros-humble-tf2-tools \
-  ros-humble-tf-transformations \
-  ros-humble-ros-testing \
-  ros-humble-realsense2-camera \
-  ros-humble-libpointmatcher \
-  ros-humble-gtsam \
-  ros-humble-rmw-cyclonedds-cpp \
-  ros-humble-ros2-control \
-  ros-humble-ros2-controllers
-```
 
 ## Working with moveit_callibration
 

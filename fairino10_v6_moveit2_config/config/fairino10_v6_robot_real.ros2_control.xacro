@@ -7,8 +7,11 @@
 
         <ros2_control name="${name}" type="system">
             <hardware>
-                <!-- By default, set up controllers for simulation. This won't work on real hardware -->
-                <plugin>mock_components/GenericSystem</plugin>
+                <!-- 
+                Modify the CONTROLLER_IP in fairino_hardware\data_type_def.h from the default value "192.168.58.2" to the actual robot's IP address.
+                Modify the CONTROLLER_IP_ADDRESS in fairino_hardware\include\fairino_hardware\fairino_hardware_interface.hpp from the default value "192.168.58.2" to the actual robot's IP address.
+                -->
+                <plugin>fairino_hardware/FairinoHardwareInterface</plugin>
             </hardware>
             <joint name="j1">
                 <command_interface name="position"/>

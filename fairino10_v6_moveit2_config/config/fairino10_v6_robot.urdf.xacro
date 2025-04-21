@@ -11,13 +11,13 @@
   </joint>
 
   <!-- fake, gazebo, real -->
-  <xacro:arg name="hardware_type" default="real" />
+  <xacro:arg name="hardware_type" default="fake" />
   <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
 
   <!-- Camera URDF -->
   <xacro:if value="${use_sensor}">
     <xacro:include filename="$(find depth_camera_description)/urdf/depth_camera.urdf" />
-  </xacro:unless>
+  </xacro:if>
 
   <!-- Robot base URDF -->
   <xacro:include filename="$(find fairino_description)/urdf/fairino10_v6.urdf" />
